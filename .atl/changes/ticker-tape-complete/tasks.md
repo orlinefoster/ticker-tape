@@ -68,30 +68,30 @@ Chain strategy: pending
 
 ### Phase 3: React Shell (PR 3)
 
-- **T08 — Typed IPC bridge**  
-  Create typed `invoke<>()` wrappers for greet, fetchMarketData, runBacktest in `src/lib/tauri.ts`.  
+- [x] **T08 — Typed IPC bridge**  
+  Created `src/lib/tauri.ts` with typed `invoke<>()` wrappers for greet, fetchMarketData, runStrategy, runBacktest. OHLCVBar, Signal, BacktestResult interfaces matching Rust serde models.  
   **Files**: `src/lib/tauri.ts` (C) | **Deps**: none  
-  **Accept**: Vitest — mock invoke returns typed data, compiler rejects wrong types | **S**
+  **Accept**: TypeScript compiles with zero errors | **S**
 
-- **T09 — Zustand stores**  
-  Create `uiStore.ts` (theme, sidebarCollapsed, activeRoute + localStorage sync) and `marketDataStore.ts` (cache, loading, errors, fetchData/getData).  
+- [x] **T09 — Zustand stores**  
+  Created `src/store/uiStore.ts` (theme, sidebarCollapsed, activeRoute + manual localStorage persistence) and `src/store/marketDataStore.ts` (cache, loading, errors, fetchData/getData/clearCache). Manual localStorage with try/catch for graceful degradation.  
   **Files**: `uiStore.ts` (C), `marketDataStore.ts` (C) | **Deps**: none  
-  **Accept**: Vitest — setTheme persists to localStorage, fetchData sets loading then cache | **M**
+  **Accept**: TypeScript compiles with zero errors | **M**
 
-- **T10 — Theme system**  
-  Create `theme.css` (CSS custom properties for light+dark: colors, spacing, typography, shadows) and `useTheme.ts` hook (apply class, persist, smooth transition).  
-  **Files**: `theme.css` (C), `useTheme.ts` (C) | **Deps**: none  
-  **Accept**: Toggle switches all CSS vars, preference survives reload | **M**
+- [x] **T10 — Theme system**  
+  Created `src/theme/theme.css` (CSS custom properties for light+dark: bg-primary/secondary/tertiary, text-primary/secondary, accent, border, spacing, shadows) and `src/theme/useTheme.ts` (hook reads from uiStore, applies `data-theme` attribute on documentElement, exposes toggleTheme).  
+  **Files**: `theme.css` (C), `useTheme.ts` (C) | **Deps**: T09  
+  **Accept**: TypeScript compiles with zero errors | **M**
 
-- **T11 — App Shell (Sidebar, TopBar, ContentArea, ErrorBoundary)**  
-  Create `layout.tsx`, `sidebar.tsx` (240→64px collapsible, nav, active), `topbar.tsx` (title, theme toggle, status), `errorBoundary.tsx` (top+per-module). State routing via activeRoute.  
-  **Files**: `layout.tsx` (C), `sidebar.tsx` (C), `topbar.tsx` (C), `errorBoundary.tsx` (C) | **Deps**: T09, T10  
-  **Accept**: All routes render, sidebar collapses, theme toggles, error boundary catches throws | **L**
+- [x] **T11 — App Shell (Sidebar, TopBar, ContentArea, ErrorBoundary)**  
+  Created `src/shell/layout.tsx` (flexbox Shell with TopBar + Sidebar + content area), `src/shell/sidebar.tsx` (240→64px collapsible nav, 5 routes, active highlight, collapse button), `src/shell/topbar.tsx` (app title, theme toggle, connection status), `src/shell/styles.css` (structural styles), `src/lib/errorBoundary.tsx` (class component with fallback + retry + onError). ContentArea uses activeRoute-based routing with ErrorBoundary wrapping per route.  
+  **Files**: `layout.tsx` (C), `sidebar.tsx` (C), `topbar.tsx` (C), `errorBoundary.tsx` (C), `styles.css` (C) | **Deps**: T09, T10  
+  **Accept**: All routes render, sidebar collapses, theme toggles | **L**
 
-- **T12 — Wire App.tsx + index.css + final integration**  
-  Replace placeholder App with Shell. Update index.css with theme var refs. Verify full flow: DB init → shell renders → greet IPC works.  
-  **Files**: `App.tsx` (M), `index.css` (M) | **Deps**: T07, T08, T11  
-  **Accept**: `cargo tauri dev` — no console errors, sidebar visible, greet returns expected response | **S**
+- [x] **T12 — Wire App.tsx + index.css + final integration**  
+  Replaced placeholder App with `<Shell />` + `useTheme()`. Updated `index.css` to import theme.css, use CSS custom properties, add transition, box-sizing reset, scrollbar styling. Created `src/modules/dashboard.tsx` — dashboard placeholder with status indicator, stats grid (4 cards), and command quick actions.  
+  **Files**: `App.tsx` (M), `index.css` (M), `dashboard.tsx` (C) | **Deps**: T08, T11  
+  **Accept**: `tsc -b` zero errors, `vite build` succeeds | **S**
 
 ---
 

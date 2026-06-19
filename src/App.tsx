@@ -1,14 +1,10 @@
-import { useState } from 'react'
+import { Shell } from './shell/layout';
+import { useTheme } from './theme/useTheme';
 
 function App() {
-  const [count, setCount] = useState(0)
+  useTheme(); // Apply theme on mount and react to changes
 
-  return (
-    <div>
-      <h1>Ticker Tape</h1>
-      <p>Trading system — coming soon</p>
-    </div>
-  )
+  return <Shell />;
 }
 
-export default App
+export default App;
