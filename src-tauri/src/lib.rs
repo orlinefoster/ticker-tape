@@ -14,6 +14,7 @@ use tauri::Manager;
 use crate::db::market_data_repo::MarketDataRepository;
 use crate::trading::backtest::{BacktestResult, Backtester};
 use crate::trading::bar_collection::BarCollection;
+use crate::trading::market_data;
 use crate::trading::models::{OHLCVBar, Signal};
 use crate::analysis::{available_modules, ModuleContext};
 use crate::trading::strategies::{BollingerBands, MACrossover, RSI, Strategy};
@@ -30,8 +31,9 @@ fn greet(name: &str) -> String {
 
 /// Fetch market data (OHLCV bars) for a symbol over a given range.
 ///
-/// First checks the local SQLite cache; on miss returns an empty vec
-/// (external API fetching is a stub for now).
+/// First checks the local SQLite cache; on miss fetches from the
+/// appropriate external data provider (Yahoo Finance, Binance, etc.)
+/// and caches the result in SQLite.
 #[tauri::command]
 async fn fetch_market_data(symbol: String, range: String) -> Result<Vec<OHLCVBar>, String> {
     let pool = db::get_db().map_err(|e| e.to_string())?;
@@ -42,20 +44,29 @@ async fn fetch_market_data(symbol: String, range: String) -> Result<Vec<OHLCVBar
     let from_str = from.format("%Y-%m-%d").to_string();
     let to_str = to.format("%Y-%m-%d").to_string();
 
-    // Check local cache first.
-    let bars = MarketDataRepository::get_bars(pool, &symbol, &from_str, &to_str)
+    // 1. Check local cache first.
+    let cached = MarketDataRepository::get_bars(pool, &symbol, &from_str, &to_str)
         .await
         .map_err(|e| e.to_string())?;
 
-    if !bars.is_empty() {
-        tracing::debug!("Cache hit for {} in range {}", symbol, range);
-        return Ok(bars);
+    if !cached.is_empty() {
+        tracing::debug!("Cache hit for {} in range {} ({} bars)", symbol, range, cached.len());
+        return Ok(cached);
     }
 
-    // Cache miss — external API is a stub, return empty for now.
-    tracing::warn!("No cached data for {} in range {}", symbol, range);
-    // TODO: Call market_data::fetch_historical_data when implemented
-    Ok(Vec::new())
+    // 2. Cache miss — fetch from external provider.
+    tracing::info!("Cache miss for {} in range {} — fetching from provider", symbol, range);
+    let bars = market_data::fetch_historical_data(&symbol, from, to)
+        .await
+        .map_err(|e| format!("Failed to fetch {}: {}", symbol, e))?;
+
+    // 3. Store fetched bars in cache (background).
+    if let Err(e) = MarketDataRepository::upsert_bars(pool, &bars).await {
+        tracing::warn!("Failed to cache bars for {}: {}", symbol, e);
+    }
+
+    tracing::info!("Fetched {} bars for {} from provider", bars.len(), symbol);
+    Ok(bars)
 }
 
 /// Run a trading strategy on historical data and return generated signals.

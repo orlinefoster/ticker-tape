@@ -8,6 +8,7 @@
 //! - Order management
 
 pub mod bar_collection;
+pub mod data_provider;
 pub mod models;
 pub mod market_data;
 pub mod strategies;
