@@ -9,9 +9,9 @@ use crate::trading::models::OHLCVBar;
 
 /// Fetch historical OHLCV data for a given symbol and date range
 pub async fn fetch_historical_data(
-    symbol: &str,
-    from: NaiveDate,
-    to: NaiveDate,
+    _symbol: &str,
+    _from: NaiveDate,
+    _to: NaiveDate,
 ) -> Result<Vec<OHLCVBar>> {
     // TODO: Implement real data fetching (Yahoo Finance, broker API, etc.)
     // Check local DB first, then fall back to external API

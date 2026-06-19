@@ -7,11 +7,13 @@
 //! - Signal generation
 //! - Order management
 
+pub mod bar_collection;
 pub mod models;
 pub mod market_data;
 pub mod strategies;
 pub mod risk;
 pub mod signals;
+pub mod backtest;
 
 /// Trading engine configuration
 #[derive(Debug, Clone)]

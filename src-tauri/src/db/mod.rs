@@ -1,10 +1,11 @@
 use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::{Pool, Sqlite};
 use std::path::Path;
+use std::sync::OnceLock;
 use anyhow::Result;
 
 /// Global database pool
-static mut DB_POOL: Option<Pool<Sqlite>> = None;
+static DB_POOL: OnceLock<Pool<Sqlite>> = OnceLock::new();
 
 /// Initialize the SQLite database at the given path
 pub async fn init_db(db_path: &Path) -> Result<()> {
@@ -22,14 +23,14 @@ pub async fn init_db(db_path: &Path) -> Result<()> {
     // Run migrations
     sqlx::migrate!("./migrations").run(&pool).await?;
 
-    unsafe {
-        DB_POOL = Some(pool);
-    }
+    DB_POOL
+        .set(pool)
+        .map_err(|_| anyhow::anyhow!("Database pool already initialized"))?;
 
     Ok(())
 }
 
 /// Get a reference to the global database pool
 pub fn get_db() -> Option<&'static Pool<Sqlite>> {
-    unsafe { DB_POOL.as_ref() }
+    DB_POOL.get()
 }
