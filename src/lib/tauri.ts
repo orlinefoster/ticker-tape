@@ -1,5 +1,8 @@
 import { invoke } from '@tauri-apps/api/core';
 
+// Re-export for direct use in modules
+export { invoke };
+
 // Types matching Rust structs (serde serialized across IPC)
 export interface OHLCVBar {
   symbol: string;
@@ -44,4 +47,13 @@ export const commands = {
 
   runAnalysis: (module: string, symbols: string[], parameters?: Record<string, unknown>): Promise<unknown> =>
     invoke('run_analysis', { module, symbols, parameters: parameters ?? {} }),
+
+  loadWaveLabels: (symbol: string): Promise<unknown> =>
+    invoke('load_wave_labels', { symbol }),
+
+  saveWaveLabels: (labels: unknown[]): Promise<number> =>
+    invoke('save_wave_labels', { labels }),
+
+  recountWaves: (symbol: string): Promise<unknown> =>
+    invoke('recount_waves', { symbol }),
 };

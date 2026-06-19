@@ -5,6 +5,7 @@
 //!
 //! Intermarket → Topology → MarketAccess → ElliottWave → RelativePerf → Portfolio
 
+pub mod elliott_wave;
 pub mod intermarket;
 pub mod topology;
 
@@ -50,5 +51,6 @@ pub fn available_modules() -> Vec<Box<dyn AnalysisModule>> {
     vec![
         Box::new(intermarket::IntermarketModule::default()),
         Box::new(topology::TopologyModule::default()),
+        Box::new(elliott_wave::ElliottWaveModule::default()),
     ]
 }

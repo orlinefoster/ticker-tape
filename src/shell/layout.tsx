@@ -5,6 +5,7 @@ import { TopBar } from './topbar';
 import { Dashboard } from '@/modules/dashboard';
 import IntermarketModule from '@/modules/internarket';
 import TopologyModule from '@/modules/topology';
+import ElliottWaveModule from '@/modules/elliott_wave';
 import { ErrorBoundary } from '@/lib/errorBoundary';
 import './styles.css';
 
@@ -18,7 +19,7 @@ const modules: Record<string, ModuleEntry> = {
   '/intermarket': { name: 'Intermarket', component: <IntermarketModule /> },
   '/topology': { name: 'Market Topology', component: <TopologyModule /> },
   '/backtesting': { name: 'Backtesting Module', component: <ModulePlaceholder name="Backtesting Module" /> },
-  '/elliott': { name: 'Elliott Wave', component: <ModulePlaceholder name="Elliott Wave" /> },
+  '/elliott': { name: 'Elliott Wave', component: <ElliottWaveModule /> },
   '/portfolio': { name: 'Portfolio', component: <ModulePlaceholder name="Portfolio" /> },
   '/monitor': { name: 'Monitor', component: <ModulePlaceholder name="Monitor" /> },
 };

@@ -16,6 +16,8 @@ use crate::trading::backtest::{BacktestResult, Backtester};
 use crate::trading::bar_collection::BarCollection;
 use crate::trading::market_data;
 use crate::trading::models::{OHLCVBar, Signal};
+use crate::analysis::elliott_wave::persistence::WaveLabelRepository;
+use crate::analysis::elliott_wave::types::WaveLabel;
 use crate::analysis::{available_modules, ModuleContext};
 use crate::trading::strategies::{BollingerBands, MACrossover, RSI, Strategy};
 
@@ -114,7 +116,7 @@ async fn run_backtest(
 
 /// Run an analysis module and return its results as JSON.
 ///
-/// Supported modules: `intermarket`, `topology`
+/// Supported modules: `intermarket`, `topology`, `elliott-wave`
 #[tauri::command]
 async fn run_analysis(
     module: String,
@@ -137,6 +139,75 @@ async fn run_analysis(
 
     let output = analyzer.analyze(&ctx).await.map_err(|e| e.to_string())?;
     Ok(output.as_json())
+}
+
+/// Load persisted wave labels for a symbol.
+///
+/// Returns existing labels immediately — no recount.
+/// The UI calls this on mount to avoid re-running the algorithm.
+#[tauri::command]
+async fn load_wave_labels(symbol: String) -> Result<Vec<WaveLabel>, String> {
+    let pool = db::get_db().map_err(|e| e.to_string())?;
+    WaveLabelRepository::load_labels(pool, &symbol, "1d")
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Save wave labels (after manual edit or auto-count).
+///
+/// Uses INSERT OR REPLACE — existing labels with the same
+/// (symbol, timeframe, degree, label, start_date) are overwritten.
+#[tauri::command]
+async fn save_wave_labels(labels: Vec<WaveLabel>) -> Result<u64, String> {
+    let pool = db::get_db().map_err(|e| e.to_string())?;
+    WaveLabelRepository::save_labels(pool, &labels)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Trigger a fresh wave count (deletes existing labels first).
+#[tauri::command]
+async fn recount_waves(symbol: String) -> Result<Vec<WaveLabel>, String> {
+    let pool = db::get_db().map_err(|e| e.to_string())?;
+
+    // 1. Delete old labels
+    WaveLabelRepository::delete_labels(pool, &symbol, "1d")
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // 2. Fetch price data
+    let to = Utc::now().date_naive();
+    let from = to - chrono::Duration::days(730);
+    let from_str = from.format("%Y-%m-%d").to_string();
+    let to_str = to.format("%Y-%m-%d").to_string();
+
+    let bars = MarketDataRepository::get_bars(pool, &symbol, &from_str, &to_str)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if bars.is_empty() {
+        return Err(format!("No price data for {}", symbol));
+    }
+
+    let dates: Vec<_> = bars.iter().map(|b| b.date).collect();
+    let closes: Vec<_> = bars.iter().map(|b| b.close).collect();
+
+    // 3. Count waves
+    let (impulse, corrective, _) =
+        crate::analysis::elliott_wave::counting::count_waves(&symbol, &dates, &closes, "1d");
+
+    let all_labels: Vec<WaveLabel> = impulse.into_iter().chain(corrective).collect();
+
+    if all_labels.is_empty() {
+        return Err(format!("Could not identify wave pattern for {}", symbol));
+    }
+
+    // 4. Persist
+    WaveLabelRepository::save_labels(pool, &all_labels)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(all_labels)
 }
 
 // ---------------------------------------------------------------------------
@@ -251,6 +322,9 @@ pub fn run() {
             run_strategy,
             run_backtest,
             run_analysis,
+            load_wave_labels,
+            save_wave_labels,
+            recount_waves,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
