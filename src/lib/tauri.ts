@@ -41,4 +41,7 @@ export const commands = {
 
   runBacktest: (symbol: string, strategy: string, params?: Record<string, unknown>): Promise<BacktestResult> =>
     invoke('run_backtest', { symbol, strategy, params: params ?? {} }),
+
+  runAnalysis: (module: string, symbols: string[], parameters?: Record<string, unknown>): Promise<unknown> =>
+    invoke('run_analysis', { module, symbols, parameters: parameters ?? {} }),
 };

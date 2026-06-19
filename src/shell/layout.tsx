@@ -3,6 +3,7 @@ import { useUIStore } from '@/store/uiStore';
 import { Sidebar } from './sidebar';
 import { TopBar } from './topbar';
 import { Dashboard } from '@/modules/dashboard';
+import IntermarketModule from '@/modules/internarket';
 import { ErrorBoundary } from '@/lib/errorBoundary';
 import './styles.css';
 
@@ -13,6 +14,7 @@ interface ModuleEntry {
 
 const modules: Record<string, ModuleEntry> = {
   '/': { name: 'Dashboard', component: <Dashboard /> },
+  '/intermarket': { name: 'Intermarket', component: <IntermarketModule /> },
   '/backtesting': { name: 'Backtesting Module', component: <ModulePlaceholder name="Backtesting Module" /> },
   '/elliott': { name: 'Elliott Wave', component: <ModulePlaceholder name="Elliott Wave" /> },
   '/portfolio': { name: 'Portfolio', component: <ModulePlaceholder name="Portfolio" /> },

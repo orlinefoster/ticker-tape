@@ -2,6 +2,7 @@
 //!
 //! Registers modules, Tauri commands, and the application lifecycle.
 
+pub mod analysis;
 pub mod db;
 pub mod trading;
 pub mod mcp;
@@ -14,6 +15,7 @@ use crate::db::market_data_repo::MarketDataRepository;
 use crate::trading::backtest::{BacktestResult, Backtester};
 use crate::trading::bar_collection::BarCollection;
 use crate::trading::models::{OHLCVBar, Signal};
+use crate::analysis::{available_modules, ModuleContext};
 use crate::trading::strategies::{BollingerBands, MACrossover, RSI, Strategy};
 
 // ---------------------------------------------------------------------------
@@ -97,6 +99,33 @@ async fn run_backtest(
     let backtester = Backtester::new(100_000.0);
     let result = backtester.run(&*strategy_obj, &collection).await;
     Ok(result)
+}
+
+/// Run an analysis module and return its results as JSON.
+///
+/// Supported modules: `intermarket`
+#[tauri::command]
+async fn run_analysis(
+    module: String,
+    symbols: Vec<String>,
+    parameters: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let pool = db::get_db().map_err(|e| e.to_string())?;
+
+    let ctx = ModuleContext {
+        db: pool.clone(),
+        symbols,
+        parameters,
+    };
+
+    let modules = available_modules();
+    let analyzer = modules
+        .into_iter()
+        .find(|m| m.name() == module)
+        .ok_or_else(|| format!("Unknown module '{}'", module))?;
+
+    let output = analyzer.analyze(&ctx).await.map_err(|e| e.to_string())?;
+    Ok(output.as_json())
 }
 
 // ---------------------------------------------------------------------------
@@ -210,6 +239,7 @@ pub fn run() {
             fetch_market_data,
             run_strategy,
             run_backtest,
+            run_analysis,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
