@@ -6,6 +6,7 @@
 //! Intermarket → Topology → MarketAccess → ElliottWave → RelativePerf → Portfolio
 
 pub mod intermarket;
+pub mod topology;
 
 use serde_json::Value;
 use sqlx::SqlitePool;
@@ -48,5 +49,6 @@ pub trait ModuleOutput: Send + Sync {
 pub fn available_modules() -> Vec<Box<dyn AnalysisModule>> {
     vec![
         Box::new(intermarket::IntermarketModule::default()),
+        Box::new(topology::TopologyModule::default()),
     ]
 }

@@ -103,7 +103,7 @@ async fn run_backtest(
 
 /// Run an analysis module and return its results as JSON.
 ///
-/// Supported modules: `intermarket`
+/// Supported modules: `intermarket`, `topology`
 #[tauri::command]
 async fn run_analysis(
     module: String,

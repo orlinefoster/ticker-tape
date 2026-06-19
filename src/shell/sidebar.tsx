@@ -9,6 +9,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { route: '/', label: 'Dashboard', icon: '📊' },
   { route: '/intermarket', label: 'Intermarket', icon: '🔄' },
+  { route: '/topology', label: 'Topology', icon: '🔗' },
   { route: '/backtesting', label: 'Backtesting', icon: '📈' },
   { route: '/elliott', label: 'Elliott Wave', icon: '🌊' },
   { route: '/portfolio', label: 'Portfolio', icon: '💼' },

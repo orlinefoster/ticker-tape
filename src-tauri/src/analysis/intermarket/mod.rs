@@ -79,7 +79,6 @@ impl AnalysisModule for IntermarketModule {
     }
 
     async fn analyze(&self, ctx: &ModuleContext) -> Result<Box<dyn ModuleOutput>> {
-        let repo = MarketDataRepository;
         let today = chrono::Utc::now().date_naive();
 
         // 1. Fetch data for all required symbols
