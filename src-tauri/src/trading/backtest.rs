@@ -4,6 +4,7 @@
 //! strategy at each step, and tracks trades, equity, and risk metrics.
 
 use chrono::NaiveDate;
+use serde::Serialize;
 
 use crate::trading::bar_collection::BarCollection;
 use crate::trading::models::SignalDirection;
@@ -11,7 +12,7 @@ use crate::trading::strategies::Strategy;
 use crate::trading::risk;
 
 /// Result of a single backtest run.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct BacktestResult {
     /// Total return as a decimal (e.g. 0.15 = 15%).
     pub total_return: f64,
