@@ -116,7 +116,7 @@ async fn run_backtest(
 
 /// Run an analysis module and return its results as JSON.
 ///
-/// Supported modules: `intermarket`, `topology`, `elliott-wave`
+/// Supported modules: `intermarket`, `topology`, `elliott-wave`, `relative-perf`
 #[tauri::command]
 async fn run_analysis(
     module: String,

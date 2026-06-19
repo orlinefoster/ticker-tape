@@ -7,6 +7,7 @@
 
 pub mod elliott_wave;
 pub mod intermarket;
+pub mod relative_perf;
 pub mod topology;
 
 use serde_json::Value;
@@ -52,5 +53,6 @@ pub fn available_modules() -> Vec<Box<dyn AnalysisModule>> {
         Box::new(intermarket::IntermarketModule::default()),
         Box::new(topology::TopologyModule::default()),
         Box::new(elliott_wave::ElliottWaveModule::default()),
+        Box::new(relative_perf::RelativePerfModule::default()),
     ]
 }
