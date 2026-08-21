@@ -56,4 +56,11 @@ export const commands = {
 
   recountWaves: (symbol: string): Promise<unknown> =>
     invoke('recount_waves', { symbol }),
+
+  analyzeMarketAI: (symbol: string, model?: string): Promise<string> =>
+    invoke('analyze_market_ai', { symbol, model }),
+
+  queryOllama: (prompt: string, model?: string): Promise<string> =>
+    invoke('query_ollama', { prompt, model }),
 };
+

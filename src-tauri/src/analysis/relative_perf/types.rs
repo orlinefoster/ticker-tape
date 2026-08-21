@@ -37,14 +37,8 @@ pub struct RelativePerfReport {
     pub benchmark: String,
     pub universe_size: usize,
     pub rankings: Vec<RelativeStrength>,
-}
-
-/// Summary for AnalysisModule output.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RelativePerfOutput {
-    pub benchmark: String,
-    pub symbol_count: usize,
     pub top_performer: String,
     pub bottom_performer: String,
     pub rotation_score: f64, // dispersion of RS scores (high = rotation happening)
 }
+

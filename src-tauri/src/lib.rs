@@ -210,6 +210,67 @@ async fn recount_waves(symbol: String) -> Result<Vec<WaveLabel>, String> {
     Ok(all_labels)
 }
 
+/// Query Ollama LLM for market analysis based on recent bars of a symbol.
+#[tauri::command]
+async fn analyze_market_ai(
+    symbol: String,
+    model: Option<String>,
+) -> Result<String, String> {
+    let pool = db::get_db().map_err(|e| e.to_string())?;
+    let to = Utc::now().date_naive();
+    let from = to - chrono::Duration::days(90);
+    let from_str = from.format("%Y-%m-%d").to_string();
+    let to_str = to.format("%Y-%m-%d").to_string();
+
+    let bars = MarketDataRepository::get_bars(pool, &symbol, &from_str, &to_str)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if bars.is_empty() {
+        return Err(format!("No market data available for {}. Please fetch data first.", symbol));
+    }
+
+    let last_bar = bars.last().unwrap();
+    let first_bar = bars.first().unwrap();
+    let change = if first_bar.close != 0.0 {
+        ((last_bar.close - first_bar.close) / first_bar.close) * 100.0
+    } else {
+        0.0
+    };
+
+    let summary = format!(
+        "Symbol: {}\nPeriod: {} to {}\nBars: {}\nCurrent Close: ${:.2}\nHigh (90d): ${:.2}\nLow (90d): ${:.2}\n90d Return: {:.2}%\nLast Volume: {:.0}",
+        symbol,
+        first_bar.date,
+        last_bar.date,
+        bars.len(),
+        last_bar.close,
+        bars.iter().map(|b| b.high).fold(f64::NEG_INFINITY, f64::max),
+        bars.iter().map(|b| b.low).fold(f64::INFINITY, f64::min),
+        change,
+        last_bar.volume
+    );
+
+    let selected_model = model.unwrap_or_else(|| "llama3".to_string());
+    ollama::analyze_market_context(&selected_model, &summary)
+        .await
+        .map_err(|e| format!("Ollama error (is Ollama running locally?): {}", e))
+}
+
+/// Direct prompt query to Ollama LLM.
+#[tauri::command]
+async fn query_ollama(
+    prompt: String,
+    model: Option<String>,
+) -> Result<String, String> {
+    let selected_model = model.unwrap_or_else(|| "llama3".to_string());
+    let resp = ollama::query_ollama(&selected_model, &prompt, None)
+        .await
+        .map_err(|e| format!("Ollama query error: {}", e))?;
+    Ok(resp.response)
+}
+
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -325,6 +386,8 @@ pub fn run() {
             load_wave_labels,
             save_wave_labels,
             recount_waves,
+            analyze_market_ai,
+            query_ollama,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

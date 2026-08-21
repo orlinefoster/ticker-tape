@@ -40,6 +40,10 @@ pub async fn init_db(db_path: &Path) -> Result<()> {
         tokio::fs::create_dir_all(parent).await?;
     }
 
+    if !db_path.exists() {
+        std::fs::File::create(db_path)?;
+    }
+
     let db_url = format!("sqlite:{}", db_path.display());
     let pool = SqlitePoolOptions::new()
         .max_connections(5)
