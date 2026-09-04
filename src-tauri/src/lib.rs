@@ -353,6 +353,31 @@ async fn fetch_all_bars(
 // App Entry Point
 // ---------------------------------------------------------------------------
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ServicesStatus {
+    pub db: bool,
+    pub ai: bool,
+    pub data: bool,
+    pub binance: bool,
+}
+
+#[tauri::command]
+async fn check_services_status() -> Result<ServicesStatus, String> {
+    let (db_res, ai_res, data_res, binance_res) = tokio::join!(
+        db::ping_db(),
+        ollama::ping_ollama(),
+        trading::market_data::ping_yahoo_finance(),
+        trading::market_data::ping_binance()
+    );
+
+    Ok(ServicesStatus {
+        db: db_res.is_ok(),
+        ai: ai_res,
+        data: data_res,
+        binance: binance_res,
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tracing_subscriber::fmt()
@@ -388,7 +413,30 @@ pub fn run() {
             recount_waves,
             analyze_market_ai,
             query_ollama,
+            check_services_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+#[cfg(test)]
+mod tests {
+    use super::db;
+
+    #[tokio::test]
+    async fn test_check_services_status_db_true() {
+        // Initialize DB in temp location
+        let db_path = std::env::temp_dir().join(format!("test_status_{}.db", uuid::Uuid::new_v4()));
+        if db::get_db().is_err() {
+            let _ = db::init_db(&db_path).await;
+        }
+
+        let status = super::check_services_status().await.unwrap();
+
+        // Clean up
+        let _ = std::fs::remove_file(&db_path);
+
+        assert!(status.db, "Database status should be true when initialized");
+    }
+}
+

@@ -1,8 +1,40 @@
 import { useTheme } from '@/theme/useTheme';
+import { useServiceStatusStore, OverrideSetting } from '@/store/serviceStatusStore';
 
 export function TopBar() {
   const { theme, toggleTheme } = useTheme();
-  const connected = true; // Will be wired to Tauri event in later phase
+  const { status, override, setOverride } = useServiceStatusStore();
+
+  const renderBadge = (name: string, value: 'connected' | 'mock' | 'disconnected', tooltipPrefix: string) => {
+    const config = {
+      connected: { symbol: '✓', color: '#4caf50', title: 'Conectado (Real)' },
+      mock: { symbol: '~', color: '#fbc02d', title: 'Mock / Simulación' },
+      disconnected: { symbol: '✗', color: '#f44336', title: 'Desconectado' },
+    }[value];
+
+    return (
+      <div
+        title={`${tooltipPrefix}: ${config.title}`}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '4px',
+          padding: '2px 6px',
+          border: `1px solid ${config.color}`,
+          borderRadius: '4px',
+          fontSize: '0.75rem',
+          fontWeight: 'bold',
+          color: config.color,
+          backgroundColor: `${config.color}10`,
+          cursor: 'help',
+          userSelect: 'none',
+        }}
+      >
+        <span>{name}</span>
+        <span>{config.symbol}</span>
+      </div>
+    );
+  };
 
   return (
     <header
@@ -36,8 +68,40 @@ export function TopBar() {
       {/* Center: empty for now */}
       <div />
 
-      {/* Right: theme toggle + connection status */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+      {/* Right: health badges + override selector + theme toggle */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+        {/* Badges */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          {renderBadge('DB', status.db, 'Base de Datos (SQLite)')}
+          {renderBadge('AI', status.ai, 'Servicio de IA (Ollama)')}
+          {renderBadge('DATA', status.data, 'Proveedor de Datos (Yahoo Finance)')}
+          {renderBadge('BINANCE', status.binance, 'Proveedor de Criptomonedas (Binance API)')}
+        </div>
+
+        {/* Dropdown */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <select
+            value={override}
+            onChange={(e) => setOverride(e.target.value as OverrideSetting)}
+            title="Seleccionar modo de simulación o conectividad real"
+            style={{
+              backgroundColor: 'var(--bg-secondary)',
+              color: 'var(--text-primary)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius)',
+              padding: '4px 6px',
+              fontSize: '0.8rem',
+              cursor: 'pointer',
+              outline: 'none',
+            }}
+          >
+            <option value="Auto">Auto</option>
+            <option value="Real">Real</option>
+            <option value="Mock">Mock</option>
+          </select>
+        </div>
+
+        {/* Theme Toggle */}
         <button
           onClick={toggleTheme}
           title={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
@@ -55,13 +119,6 @@ export function TopBar() {
         >
           {theme === 'light' ? '🌙' : '☀️'}
         </button>
-
-        <span
-          title={connected ? 'Connected' : 'Disconnected'}
-          style={{ fontSize: '0.875rem', lineHeight: 1 }}
-        >
-          {connected ? '🟢' : '🔴'}
-        </span>
       </div>
     </header>
   );

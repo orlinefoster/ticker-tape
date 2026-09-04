@@ -62,5 +62,16 @@ export const commands = {
 
   queryOllama: (prompt: string, model?: string): Promise<string> =>
     invoke('query_ollama', { prompt, model }),
+
+  checkServicesStatus: (): Promise<ServicesStatus> =>
+    invoke('check_services_status'),
 };
+
+export interface ServicesStatus {
+  db: boolean;
+  ai: boolean;
+  data: boolean;
+  binance: boolean;
+}
+
 

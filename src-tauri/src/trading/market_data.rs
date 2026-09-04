@@ -52,6 +52,52 @@ pub fn preprocess_bars(bars: Vec<OHLCVBar>) -> Vec<OHLCVBar> {
     bars
 }
 
+/// Ping Yahoo Finance URL to check connectivity.
+pub async fn ping_yahoo_finance_url(url: &str) -> bool {
+    let client_res = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_millis(1500))
+        .timeout(std::time::Duration::from_millis(1500))
+        .build();
+
+    let client = match client_res {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+
+    match client.get(url).send().await {
+        Ok(resp) => resp.status().is_success(),
+        Err(_) => false,
+    }
+}
+
+/// Ping Yahoo Finance API endpoint to check connectivity.
+pub async fn ping_yahoo_finance() -> bool {
+    ping_yahoo_finance_url("https://query2.finance.yahoo.com").await
+}
+
+/// Ping Binance URL to check connectivity.
+pub async fn ping_binance_url(url: &str) -> bool {
+    let client_res = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_millis(2000))
+        .timeout(std::time::Duration::from_millis(2000))
+        .build();
+
+    let client = match client_res {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+
+    match client.get(url).send().await {
+        Ok(resp) => resp.status().is_success(),
+        Err(_) => false,
+    }
+}
+
+/// Ping Binance API endpoint to check connectivity.
+pub async fn ping_binance() -> bool {
+    ping_binance_url("https://api.binance.com/api/v3/ping").await
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -94,4 +140,36 @@ mod tests {
         let result = preprocess_bars(bars.clone());
         assert_eq!(result, bars);
     }
+
+    #[tokio::test]
+    async fn test_ping_yahoo_finance_failure() {
+        let res = ping_yahoo_finance_url("http://127.0.0.1:1").await;
+        assert!(!res);
+    }
+
+    #[tokio::test]
+    async fn test_ping_yahoo_finance_success() {
+        use tokio::net::TcpListener;
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let url = format!("http://{}", addr);
+
+        tokio::spawn(async move {
+            if let Ok((mut socket, _)) = listener.accept().await {
+                let mut buf = [0u8; 1024];
+                let _ = socket.read(&mut buf).await;
+
+                let response = "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Length: 2\r\n\r\nOK";
+                let _ = socket.write_all(response.as_bytes()).await;
+                let _ = socket.shutdown().await;
+            }
+        });
+
+        let res = ping_yahoo_finance_url(&url).await;
+        assert!(res);
+    }
 }
+
+
