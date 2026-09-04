@@ -212,17 +212,193 @@ impl DataProvider for YahooFinanceProvider {
 }
 
 // ---------------------------------------------------------------------------
-// Provider registry (future: auto-select based on symbol prefix)
+// Binance provider
 // ---------------------------------------------------------------------------
+
+const BINANCE_BASE: &str = "https://api.binance.com/api/v3/klines";
+
+/// Provider that fetches historical crypto OHLCV bars from Binance API.
+///
+/// No API key required for public market data.
+pub struct BinanceProvider {
+    client: Client,
+}
+
+impl BinanceProvider {
+    /// Create a new Binance provider with custom timeouts.
+    pub fn new() -> Self {
+        Self {
+            client: Client::builder()
+                .user_agent("ticker-tape/0.1.0")
+                .timeout(std::time::Duration::from_secs(10))
+                .build()
+                .expect("reqwest Client should build"),
+        }
+    }
+
+    /// Normalise internal symbol to Binance symbol format (e.g. "BTC" -> "BTCUSDT", "BTCUSDT" -> "BTCUSDT")
+    pub fn normalise_symbol(symbol: &str) -> String {
+        let clean = symbol.trim().to_uppercase();
+        if clean.ends_with("USDT")
+            || clean.ends_with("BUSD")
+            || clean.ends_with("FDUSD")
+            || (clean.len() > 4 && (clean.ends_with("BTC") || clean.ends_with("ETH")))
+        {
+            clean
+        } else {
+            format!("{}USDT", clean)
+        }
+    }
+
+    /// Build the URL for Binance Klines API.
+    pub fn build_url(&self, symbol: &str, from: NaiveDate, to: NaiveDate) -> String {
+        let binance_symbol = Self::normalise_symbol(symbol);
+        let start_time = from
+            .and_hms_opt(0, 0, 0)
+            .map(|dt| dt.and_utc().timestamp_millis())
+            .unwrap_or(0);
+        let end_time = to
+            .and_hms_opt(23, 59, 59)
+            .map(|dt| dt.and_utc().timestamp_millis())
+            .unwrap_or(0);
+
+        format!(
+            "{}?symbol={}&interval=1d&startTime={}&endTime={}&limit=1000",
+            BINANCE_BASE, binance_symbol, start_time, end_time
+        )
+    }
+}
+
+impl Default for BinanceProvider {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl DataProvider for BinanceProvider {
+    fn name(&self) -> &str {
+        "binance"
+    }
+
+    async fn fetch_bars(
+        &self,
+        symbol: &str,
+        from: NaiveDate,
+        to: NaiveDate,
+    ) -> anyhow::Result<Vec<OHLCVBar>> {
+        let url = self.build_url(symbol, from, to);
+
+        let resp = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| anyhow::anyhow!("Binance request failed for {}: {}", symbol, e))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            anyhow::bail!("Binance returned error [{status}]: {text}");
+        }
+
+        let raw_klines: Vec<Vec<serde_json::Value>> = resp
+            .json()
+            .await
+            .map_err(|e| anyhow::anyhow!("Binance parse failed for {}: {}", symbol, e))?;
+
+        let mut bars = Vec::with_capacity(raw_klines.len());
+
+        for k in raw_klines {
+            if k.len() < 6 {
+                continue;
+            }
+
+            let open_time_ms = k[0]
+                .as_i64()
+                .ok_or_else(|| anyhow::anyhow!("Missing openTime in Binance candle"))?;
+
+            let date = chrono::DateTime::from_timestamp_millis(open_time_ms)
+                .map(|dt| dt.date_naive())
+                .ok_or_else(|| anyhow::anyhow!("Invalid timestamp in Binance candle: {open_time_ms}"))?;
+
+            let parse_f64 = |val: &serde_json::Value| -> Option<f64> {
+                if let Some(s) = val.as_str() {
+                    s.parse::<f64>().ok()
+                } else {
+                    val.as_f64()
+                }
+            };
+
+            let open = parse_f64(&k[1]).unwrap_or(0.0);
+            let high = parse_f64(&k[2]).unwrap_or(0.0);
+            let low = parse_f64(&k[3]).unwrap_or(0.0);
+            let close = parse_f64(&k[4]).unwrap_or(0.0);
+            let volume = parse_f64(&k[5]).unwrap_or(0.0);
+
+            bars.push(OHLCVBar {
+                symbol: symbol.to_string(),
+                date,
+                open,
+                high,
+                low,
+                close,
+                volume,
+            });
+        }
+
+        if bars.is_empty() {
+            anyhow::bail!("Binance returned empty data for {}", symbol);
+        }
+
+        Ok(bars)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Provider registry & routing
+// ---------------------------------------------------------------------------
+
+/// Helper to check if a symbol represents a cryptocurrency
+pub fn is_crypto_symbol(symbol: &str) -> bool {
+    let s = symbol.trim().to_uppercase();
+    s.ends_with("USDT")
+        || s.ends_with("BUSD")
+        || s.ends_with("FDUSD")
+        || matches!(
+            s.as_str(),
+            "BTC"
+                | "ETH"
+                | "SOL"
+                | "BNB"
+                | "XRP"
+                | "ADA"
+                | "DOGE"
+                | "AVAX"
+                | "DOT"
+                | "LINK"
+                | "MATIC"
+                | "NEAR"
+                | "SUI"
+                | "APT"
+                | "ARB"
+                | "OP"
+                | "RENDER"
+                | "FET"
+        )
+}
 
 /// Pick the best provider for a given symbol.
 ///
 /// Rules:
-/// - Crypto symbols (BTC, ETH, etc.) → Binance (once implemented)
+/// - Crypto symbols (BTC, ETH, BTCUSDT, etc.) → Binance
 /// - Everything else → Yahoo Finance
-pub fn provider_for_symbol(_symbol: &str) -> Box<dyn DataProvider> {
-    // TODO: add BinanceProvider for crypto symbols
-    Box::new(YahooFinanceProvider::new())
+pub fn provider_for_symbol(symbol: &str) -> Box<dyn DataProvider> {
+    if is_crypto_symbol(symbol) {
+        Box::new(BinanceProvider::new())
+    } else {
+        Box::new(YahooFinanceProvider::new())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -247,20 +423,54 @@ mod tests {
     }
 
     #[test]
-    fn test_provider_name() {
-        let provider = YahooFinanceProvider::new();
-        assert_eq!(provider.name(), "yahoo-finance");
+    fn test_binance_build_url() {
+        let provider = BinanceProvider::new();
+        let from = NaiveDate::from_ymd_opt(2025, 1, 1).unwrap();
+        let to = NaiveDate::from_ymd_opt(2025, 1, 5).unwrap();
+
+        let url = provider.build_url("BTC", from, to);
+        assert!(url.contains("api.binance.com/api/v3/klines"));
+        assert!(url.contains("symbol=BTCUSDT"));
+        assert!(url.contains("interval=1d"));
+        assert!(url.contains("startTime="));
     }
 
     #[test]
-    fn test_provider_for_symbol_default() {
-        let provider = provider_for_symbol("SPY");
+    fn test_binance_normalise_symbol() {
+        assert_eq!(BinanceProvider::normalise_symbol("BTC"), "BTCUSDT");
+        assert_eq!(BinanceProvider::normalise_symbol("btcusdt"), "BTCUSDT");
+        assert_eq!(BinanceProvider::normalise_symbol("ETHUSDT"), "ETHUSDT");
+        assert_eq!(BinanceProvider::normalise_symbol("sol"), "SOLUSDT");
+    }
+
+    #[test]
+    fn test_provider_routing() {
+        let p1 = provider_for_symbol("BTC");
+        assert_eq!(p1.name(), "binance");
+
+        let p2 = provider_for_symbol("ETHUSDT");
+        assert_eq!(p2.name(), "binance");
+
+        let p3 = provider_for_symbol("SPY");
+        assert_eq!(p3.name(), "yahoo-finance");
+
+        let p4 = provider_for_symbol("AAPL");
+        assert_eq!(p4.name(), "yahoo-finance");
+    }
+
+    #[test]
+    fn test_provider_name() {
+        let provider = YahooFinanceProvider::new();
         assert_eq!(provider.name(), "yahoo-finance");
+
+        let binance = BinanceProvider::new();
+        assert_eq!(binance.name(), "binance");
     }
 
     #[test]
     fn test_provider_is_send_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<YahooFinanceProvider>();
+        assert_send_sync::<BinanceProvider>();
     }
 }
