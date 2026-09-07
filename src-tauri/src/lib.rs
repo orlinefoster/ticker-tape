@@ -361,6 +361,40 @@ pub struct ServicesStatus {
     pub binance: bool,
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ProviderTestResult {
+    pub symbol: String,
+    pub provider_used: String,
+    pub cache_hit: bool,
+    pub bars_count: usize,
+    pub latency_ms: u64,
+    pub first_date: Option<String>,
+    pub last_date: Option<String>,
+    pub first_close: Option<f64>,
+    pub last_close: Option<f64>,
+    pub min_price: Option<f64>,
+    pub max_price: Option<f64>,
+    pub total_volume: f64,
+    pub bars_sample: Vec<OHLCVBar>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PingResult {
+    pub provider: String,
+    pub online: bool,
+    pub latency_ms: u64,
+    pub endpoint: String,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct CacheItem {
+    pub symbol: String,
+    pub count: i64,
+    pub min_date: Option<String>,
+    pub max_date: Option<String>,
+}
+
 #[tauri::command]
 async fn check_services_status() -> Result<ServicesStatus, String> {
     let (db_res, ai_res, data_res, binance_res) = tokio::join!(
@@ -376,6 +410,174 @@ async fn check_services_status() -> Result<ServicesStatus, String> {
         data: data_res,
         binance: binance_res,
     })
+}
+
+/// Run an interactive test fetch with timing, provider tracking, and payload inspection.
+#[tauri::command]
+async fn test_provider_fetch(
+    symbol: String,
+    range: String,
+    force_refresh: bool,
+) -> Result<ProviderTestResult, String> {
+    let start_time = std::time::Instant::now();
+    let pool = db::get_db().map_err(|e| e.to_string())?;
+
+    let to = Utc::now().date_naive();
+    let from = parse_range(&range, to)?;
+
+    let from_str = from.format("%Y-%m-%d").to_string();
+    let to_str = to.format("%Y-%m-%d").to_string();
+
+    let mut provider_used = if trading::data_provider::is_crypto_symbol(&symbol) {
+        "binance".to_string()
+    } else {
+        "yahoo-finance".to_string()
+    };
+    let mut cache_hit = false;
+
+    let bars = if !force_refresh {
+        let cached = MarketDataRepository::get_bars(pool, &symbol, &from_str, &to_str)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if !cached.is_empty() {
+            cache_hit = true;
+            provider_used = "sqlite-cache".to_string();
+            cached
+        } else {
+            let fetched = market_data::fetch_historical_data(&symbol, from, to)
+                .await
+                .map_err(|e| format!("Fetch failed: {}", e))?;
+            let _ = MarketDataRepository::upsert_bars(pool, &fetched).await;
+            fetched
+        }
+    } else {
+        let fetched = market_data::fetch_historical_data(&symbol, from, to)
+            .await
+            .map_err(|e| format!("Fetch failed: {}", e))?;
+        let _ = MarketDataRepository::upsert_bars(pool, &fetched).await;
+        fetched
+    };
+
+    let elapsed = start_time.elapsed().as_millis() as u64;
+
+    let first_date = bars.first().map(|b| b.date.to_string());
+    let last_date = bars.last().map(|b| b.date.to_string());
+    let first_close = bars.first().map(|b| b.close);
+    let last_close = bars.last().map(|b| b.close);
+
+    let min_price = if bars.is_empty() {
+        None
+    } else {
+        Some(bars.iter().map(|b| b.low).fold(f64::INFINITY, f64::min))
+    };
+    let max_price = if bars.is_empty() {
+        None
+    } else {
+        Some(bars.iter().map(|b| b.high).fold(f64::NEG_INFINITY, f64::max))
+    };
+    let total_volume = bars.iter().map(|b| b.volume).sum();
+
+    // Sample up to 10 bars (first 5 and last 5)
+    let bars_sample = if bars.len() <= 10 {
+        bars.clone()
+    } else {
+        let mut sample = bars[..5].to_vec();
+        sample.extend_from_slice(&bars[bars.len() - 5..]);
+        sample
+    };
+
+    Ok(ProviderTestResult {
+        symbol: symbol.to_uppercase(),
+        provider_used,
+        cache_hit,
+        bars_count: bars.len(),
+        latency_ms: elapsed,
+        first_date,
+        last_date,
+        first_close,
+        last_close,
+        min_price,
+        max_price,
+        total_volume,
+        bars_sample,
+    })
+}
+
+/// Measure exact latency for a specific provider.
+#[tauri::command]
+async fn ping_provider_test(provider: String) -> Result<PingResult, String> {
+    let start_time = std::time::Instant::now();
+
+    match provider.to_lowercase().as_str() {
+        "binance" => {
+            let endpoint = "https://api.binance.com/api/v3/ping".to_string();
+            let online = trading::market_data::ping_binance().await;
+            let elapsed = start_time.elapsed().as_millis() as u64;
+            Ok(PingResult {
+                provider: "binance".to_string(),
+                online,
+                latency_ms: elapsed,
+                endpoint,
+                error: if online { None } else { Some("Unreachable or timeout".to_string()) },
+            })
+        }
+        "yahoo" => {
+            let endpoint = "https://query2.finance.yahoo.com".to_string();
+            let online = trading::market_data::ping_yahoo_finance().await;
+            let elapsed = start_time.elapsed().as_millis() as u64;
+            Ok(PingResult {
+                provider: "yahoo-finance".to_string(),
+                online,
+                latency_ms: elapsed,
+                endpoint,
+                error: if online { None } else { Some("Unreachable or timeout".to_string()) },
+            })
+        }
+        "db" => {
+            let endpoint = "SQLite Local WAL".to_string();
+            let res = db::ping_db().await;
+            let elapsed = start_time.elapsed().as_millis() as u64;
+            Ok(PingResult {
+                provider: "sqlite-db".to_string(),
+                online: res.is_ok(),
+                latency_ms: elapsed,
+                endpoint,
+                error: res.err().map(|e| e.to_string()),
+            })
+        }
+        _ => Err(format!("Unknown provider '{}'. Supported: binance, yahoo, db", provider)),
+    }
+}
+
+/// Delete cached bars for a symbol from SQLite.
+#[tauri::command]
+async fn clear_symbol_cache(symbol: String) -> Result<u64, String> {
+    let pool = db::get_db().map_err(|e| e.to_string())?;
+    MarketDataRepository::delete_symbol(pool, &symbol)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Get overview of all cached symbols in SQLite.
+#[tauri::command]
+async fn get_cache_stats() -> Result<Vec<CacheItem>, String> {
+    let pool = db::get_db().map_err(|e| e.to_string())?;
+    let rows = MarketDataRepository::get_cache_overview(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let items = rows
+        .into_iter()
+        .map(|(symbol, count, min_date, max_date)| CacheItem {
+            symbol,
+            count,
+            min_date,
+            max_date,
+        })
+        .collect();
+
+    Ok(items)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -414,6 +616,10 @@ pub fn run() {
             analyze_market_ai,
             query_ollama,
             check_services_status,
+            test_provider_fetch,
+            ping_provider_test,
+            clear_symbol_cache,
+            get_cache_stats,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

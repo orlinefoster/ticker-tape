@@ -122,6 +122,30 @@ impl MarketDataRepository {
 
         Ok(result.rows_affected())
     }
+
+    /// Delete all cached bars for a specific symbol.
+    pub async fn delete_symbol(pool: &Pool<Sqlite>, symbol: &str) -> Result<u64> {
+        let result = sqlx::query("DELETE FROM market_data WHERE symbol = ?1")
+            .bind(symbol)
+            .execute(pool)
+            .await?;
+        Ok(result.rows_affected())
+    }
+
+    /// List all cached symbols and their bar counts.
+    pub async fn get_cache_overview(
+        pool: &Pool<Sqlite>,
+    ) -> Result<Vec<(String, i64, Option<String>, Option<String>)>> {
+        let rows: Vec<(String, i64, Option<String>, Option<String>)> = sqlx::query_as(
+            "SELECT symbol, COUNT(*) as count, MIN(date) as min_date, MAX(date) as max_date \
+             FROM market_data \
+             GROUP BY symbol \
+             ORDER BY symbol ASC",
+        )
+        .fetch_all(pool)
+        .await?;
+        Ok(rows)
+    }
 }
 
 // ---------------------------------------------------------------------------

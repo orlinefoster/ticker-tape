@@ -10,6 +10,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { route: '/', label: 'Dashboard', icon: '📊' },
   { route: '/chart', label: 'Gráfico', icon: '📉' },
+  { route: '/providers', label: 'Proveedores', icon: '🔌' },
   { route: '/intermarket', label: 'Intermarket', icon: '🔄' },
   { route: '/topology', label: 'Topology', icon: '🔗' },
   { route: '/relative-perf', label: 'Alpha Rotation', icon: '📡' },

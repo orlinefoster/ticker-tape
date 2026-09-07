@@ -65,6 +65,18 @@ export const commands = {
 
   checkServicesStatus: (): Promise<ServicesStatus> =>
     invoke('check_services_status'),
+
+  testProviderFetch: (symbol: string, range: string, forceRefresh: boolean = false): Promise<ProviderTestResult> =>
+    invoke('test_provider_fetch', { symbol, range, forceRefresh }),
+
+  pingProviderTest: (provider: string): Promise<PingResult> =>
+    invoke('ping_provider_test', { provider }),
+
+  clearSymbolCache: (symbol: string): Promise<number> =>
+    invoke('clear_symbol_cache', { symbol }),
+
+  getCacheStats: (): Promise<CacheItem[]> =>
+    invoke('get_cache_stats'),
 };
 
 export interface ServicesStatus {
@@ -72,6 +84,37 @@ export interface ServicesStatus {
   ai: boolean;
   data: boolean;
   binance: boolean;
+}
+
+export interface ProviderTestResult {
+  symbol: string;
+  provider_used: 'binance' | 'yahoo-finance' | 'sqlite-cache' | string;
+  cache_hit: boolean;
+  bars_count: number;
+  latency_ms: number;
+  first_date: string | null;
+  last_date: string | null;
+  first_close: number | null;
+  last_close: number | null;
+  min_price: number | null;
+  max_price: number | null;
+  total_volume: number;
+  bars_sample: OHLCVBar[];
+}
+
+export interface PingResult {
+  provider: string;
+  online: boolean;
+  latency_ms: number;
+  endpoint: string;
+  error: string | null;
+}
+
+export interface CacheItem {
+  symbol: string;
+  count: number;
+  min_date: string | null;
+  max_date: string | null;
 }
 
 

@@ -11,6 +11,7 @@ import BacktestingModule from '@/modules/backtesting';
 import PortfolioModule from '@/modules/portfolio';
 import MonitorModule from '@/modules/monitor';
 import MarketChartModule from '@/modules/chart';
+import ProvidersModule from '@/modules/providers';
 import { ErrorBoundary } from '@/lib/errorBoundary';
 import './styles.css';
 
@@ -22,6 +23,7 @@ interface ModuleEntry {
 const modules: Record<string, ModuleEntry> = {
   '/': { name: 'Dashboard', component: <Dashboard /> },
   '/chart': { name: 'Gráfico de Mercado', component: <MarketChartModule /> },
+  '/providers': { name: 'Diagnóstico de Proveedores', component: <ProvidersModule /> },
   '/intermarket': { name: 'Intermarket', component: <IntermarketModule /> },
   '/topology': { name: 'Market Topology', component: <TopologyModule /> },
   '/relative-perf': { name: 'Alpha Rotation Radar', component: <RelativePerfModule /> },
