@@ -123,7 +123,7 @@ export function Sidebar() {
       {/* Divider */}
       <div style={{ margin: '8px 14px', borderTop: '1px solid var(--border-subtle)' }} />
 
-      {/* Lower Nav Section: Dynamic Modules & Multi-Window slots */}
+      {/* Lower Nav Section: Custom Saved Views & Dynamic Multi-Window slots */}
       <div
         style={{
           padding: '8px',
@@ -142,16 +142,32 @@ export function Sidebar() {
               color: 'var(--text-secondary)',
               textTransform: 'uppercase',
               letterSpacing: '0.05em',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
             }}
           >
-            MÓDULOS DESPLEGADOS
+            <span>Vistas Guardadas</span>
+            {containers.length > 0 && (
+              <span
+                style={{
+                  fontSize: '0.625rem',
+                  padding: '1px 5px',
+                  borderRadius: '10px',
+                  background: 'rgba(255, 107, 157, 0.2)',
+                  color: 'var(--accent)',
+                }}
+              >
+                {containers.length}
+              </span>
+            )}
           </div>
         )}
 
         {/* Action Button: "💻 +" */}
         <button
           onClick={() => setShowPicker(!showPicker)}
-          title="Desplegar nuevo módulo (💻 +)"
+          title="Guardar nueva vista personalizada (+)"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -159,18 +175,18 @@ export function Sidebar() {
             width: '100%',
             padding: sidebarCollapsed ? '10px 0' : '8px 12px',
             border: '1px dashed var(--accent)',
-            background: showPicker ? 'var(--bg-primary)' : 'transparent',
+            background: showPicker ? 'rgba(255, 107, 157, 0.12)' : 'transparent',
             color: 'var(--accent)',
             cursor: 'pointer',
-            fontSize: '0.875rem',
+            fontSize: '0.8125rem',
             borderRadius: 'var(--radius)',
             justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
             fontWeight: 600,
-            transition: 'all 0.15s ease',
+            transition: 'all var(--transition-fast)',
           }}
         >
-          <span style={{ fontSize: '1.1rem' }}>💻 +</span>
-          {!sidebarCollapsed && <span>Abrir Módulo</span>}
+          <span style={{ fontSize: '1rem' }}>✨ +</span>
+          {!sidebarCollapsed && <span>Nueva Vista</span>}
         </button>
 
         {/* Dropdown / Span popup picker */}
@@ -181,16 +197,16 @@ export function Sidebar() {
               bottom: '100%',
               left: '8px',
               right: '8px',
-              backgroundColor: 'var(--bg-secondary)',
+              backgroundColor: 'var(--bg-surface)',
               border: '1px solid var(--border)',
               borderRadius: 'var(--radius)',
-              boxShadow: '0 8px 24px rgba(0,0,0,0.2)',
+              boxShadow: '0 12px 32px rgba(0,0,0,0.5)',
               padding: '8px',
               zIndex: 100,
               display: 'flex',
               flexDirection: 'column',
               gap: '4px',
-              maxHeight: '220px',
+              maxHeight: '240px',
               overflowY: 'auto',
             }}
           >
@@ -198,13 +214,13 @@ export function Sidebar() {
               style={{
                 fontSize: '0.75rem',
                 fontWeight: 700,
-                color: 'var(--text-secondary)',
+                color: 'var(--text-bright)',
                 padding: '4px 6px',
-                borderBottom: '1px solid var(--border)',
+                borderBottom: '1px solid var(--border-subtle)',
                 marginBottom: '4px',
               }}
             >
-              Seleccionar Módulo a Desplegar:
+              Elegir Módulo Base:
             </div>
             {navItems.map((mod) => (
               <button
@@ -222,8 +238,9 @@ export function Sidebar() {
                   cursor: 'pointer',
                   borderRadius: '4px',
                   textAlign: 'left',
+                  transition: 'background-color 0.15s ease',
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--bg-primary)')}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'rgba(255, 107, 157, 0.15)')}
                 onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
               >
                 <span>{mod.icon}</span>
@@ -234,7 +251,7 @@ export function Sidebar() {
         )}
 
         {/* Active Container Slots */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '180px', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '200px', overflowY: 'auto' }}>
           {containers.map((c) => {
             const isActive = activeContainerId === c.id;
             return (
@@ -244,24 +261,42 @@ export function Sidebar() {
                   display: 'flex',
                   alignItems: 'center',
                   gap: sidebarCollapsed ? '0' : '8px',
-                  padding: sidebarCollapsed ? '8px 0' : '6px 10px',
+                  padding: sidebarCollapsed ? '8px 0' : '7px 10px',
                   borderRadius: 'var(--radius)',
-                  backgroundColor: isActive ? 'var(--bg-primary)' : 'transparent',
-                  border: isActive ? '1px solid var(--accent)' : '1px solid transparent',
+                  backgroundColor: isActive
+                    ? 'linear-gradient(90deg, rgba(255, 107, 157, 0.2) 0%, rgba(179, 136, 255, 0.15) 100%)'
+                    : 'transparent',
+                  border: isActive ? '1px solid rgba(255, 107, 157, 0.4)' : '1px solid transparent',
                   cursor: 'pointer',
                   justifyContent: sidebarCollapsed ? 'center' : 'space-between',
+                  boxShadow: isActive ? 'var(--holo-glow)' : 'none',
+                  position: 'relative',
+                  transition: 'all var(--transition-fast)',
                 }}
                 onClick={() => setActiveContainer(c.id)}
                 title={c.name}
               >
+                {isActive && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      left: '0',
+                      top: '15%',
+                      bottom: '15%',
+                      width: '3px',
+                      background: 'var(--holo-gradient)',
+                      borderRadius: '0 2px 2px 0',
+                    }}
+                  />
+                )}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
-                  <span style={{ fontSize: '1.1rem' }}>{c.icon}</span>
+                  <span style={{ fontSize: '1rem' }}>{c.icon}</span>
                   {!sidebarCollapsed && (
                     <span
                       style={{
                         fontSize: '0.8125rem',
-                        fontWeight: isActive ? 600 : 400,
-                        color: 'var(--text-primary)',
+                        fontWeight: isActive ? 700 : 500,
+                        color: isActive ? 'var(--text-bright)' : 'var(--text-secondary)',
                         whiteSpace: 'nowrap',
                         textOverflow: 'ellipsis',
                         overflow: 'hidden',
@@ -279,16 +314,18 @@ export function Sidebar() {
                       e.stopPropagation();
                       removeContainer(c.id);
                     }}
-                    title="Cerrar contenedor"
+                    title="Eliminar vista personalizada"
                     style={{
                       border: 'none',
                       background: 'transparent',
-                      color: 'var(--text-secondary)',
+                      color: 'var(--text-muted)',
                       cursor: 'pointer',
-                      fontSize: '0.8rem',
+                      fontSize: '0.75rem',
                       padding: '2px 4px',
                       borderRadius: '3px',
                     }}
+                    onMouseEnter={(e) => (e.currentTarget.style.color = '#FF5252')}
+                    onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
                   >
                     ✕
                   </button>

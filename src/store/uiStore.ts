@@ -7,6 +7,7 @@ export interface ModuleContainer {
   name: string;
   moduleRoute: string;
   icon: string;
+  createdAt?: number;
 }
 
 export interface UIState {
@@ -22,36 +23,58 @@ export interface UIState {
   
   addContainer: (moduleRoute: string, name?: string, icon?: string) => string;
   removeContainer: (id: string) => void;
-  setActiveContainer: (id: string | null) => void;
+  renameContainer: (id: string, name: string) => void;
+  updateContainerIcon: (id: string, icon: string) => void;
   updateContainerModule: (id: string, moduleRoute: string) => void;
+  setActiveContainer: (id: string | null) => void;
 }
 
-function loadPersisted(): Pick<UIState, 'theme' | 'sidebarCollapsed'> {
+interface PersistedState {
+  theme?: 'light' | 'dark';
+  sidebarCollapsed?: boolean;
+  activeRoute?: string;
+  containers?: ModuleContainer[];
+  activeContainerId?: string | null;
+}
+
+function loadPersisted(): Partial<UIState> {
   try {
     if (typeof localStorage !== 'undefined') {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
-        const data = JSON.parse(raw);
+        const data: PersistedState = JSON.parse(raw);
         return {
-          theme: data.theme === 'dark' ? 'dark' : 'light',
-          sidebarCollapsed:
-            typeof data.sidebarCollapsed === 'boolean' ? data.sidebarCollapsed : false,
+          theme: data.theme === 'light' ? 'light' : 'dark',
+          sidebarCollapsed: typeof data.sidebarCollapsed === 'boolean' ? data.sidebarCollapsed : false,
+          activeRoute: typeof data.activeRoute === 'string' ? data.activeRoute : '/',
+          containers: Array.isArray(data.containers) ? data.containers : [],
+          activeContainerId: data.activeContainerId ?? null,
         };
       }
     }
   } catch {
-    // Ignore parse errors — use defaults
+    // Ignore parse errors — fallback to defaults
   }
-  return { theme: 'light', sidebarCollapsed: false };
+  return {
+    theme: 'dark',
+    sidebarCollapsed: false,
+    activeRoute: '/',
+    containers: [],
+    activeContainerId: null,
+  };
 }
 
-function persist(state: Pick<UIState, 'theme' | 'sidebarCollapsed'>): void {
+function persist(state: Partial<UIState>): void {
   try {
     if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({ theme: state.theme, sidebarCollapsed: state.sidebarCollapsed }),
-      );
+      const dataToSave: PersistedState = {
+        theme: state.theme ?? 'dark',
+        sidebarCollapsed: state.sidebarCollapsed ?? false,
+        activeRoute: state.activeRoute ?? '/',
+        containers: state.containers ?? [],
+        activeContainerId: state.activeContainerId ?? null,
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
     }
   } catch {
     // Storage full or unavailable — degrade gracefully
@@ -62,42 +85,53 @@ export const useUIStore = create<UIState>((set, get) => {
   const initial = loadPersisted();
 
   return {
-    ...initial,
-    activeRoute: '/',
-    containers: [],
-    activeContainerId: null,
+    theme: initial.theme ?? 'dark',
+    sidebarCollapsed: initial.sidebarCollapsed ?? false,
+    activeRoute: initial.activeRoute ?? '/',
+    containers: initial.containers ?? [],
+    activeContainerId: initial.activeContainerId ?? null,
 
     toggleSidebar: () =>
       set((prev) => {
         const sidebarCollapsed = !prev.sidebarCollapsed;
-        persist({ theme: prev.theme, sidebarCollapsed });
+        persist({ ...prev, sidebarCollapsed });
         return { sidebarCollapsed };
       }),
 
     setTheme: (theme) =>
       set((prev) => {
-        persist({ theme, sidebarCollapsed: prev.sidebarCollapsed });
+        persist({ ...prev, theme });
         return { theme };
       }),
 
     setActiveRoute: (activeRoute) =>
-      set({ activeRoute, activeContainerId: null }),
+      set((prev) => {
+        const next = { activeRoute, activeContainerId: null };
+        persist({ ...prev, ...next });
+        return next;
+      }),
 
     addContainer: (moduleRoute: string, name?: string, icon: string = '💻') => {
       const id = `container-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
       const count = get().containers.filter((c) => c.moduleRoute === moduleRoute).length;
-      const defaultName = name || (count > 0 ? `Vista ${count + 1}` : 'Vista Auxiliar');
+      const defaultName = name || (count > 0 ? `Vista ${count + 1}` : 'Vista Personalizada');
       const newContainer: ModuleContainer = {
         id,
         name: defaultName,
         moduleRoute,
         icon,
+        createdAt: Date.now(),
       };
 
-      set((state) => ({
-        containers: [...state.containers, newContainer],
-        activeContainerId: id,
-      }));
+      set((state) => {
+        const nextContainers = [...state.containers, newContainer];
+        const nextState = {
+          containers: nextContainers,
+          activeContainerId: id,
+        };
+        persist({ ...state, ...nextState });
+        return nextState;
+      });
 
       return id;
     },
@@ -112,23 +146,50 @@ export const useUIStore = create<UIState>((set, get) => {
               : null
             : state.activeContainerId;
 
-        return {
+        const nextState = {
           containers: nextContainers,
           activeContainerId: nextActiveId,
         };
+        persist({ ...state, ...nextState });
+        return nextState;
+      });
+    },
+
+    renameContainer: (id: string, name: string) => {
+      set((state) => {
+        const nextContainers = state.containers.map((c) =>
+          c.id === id ? { ...c, name: name.trim() || c.name } : c
+        );
+        persist({ ...state, containers: nextContainers });
+        return { containers: nextContainers };
+      });
+    },
+
+    updateContainerIcon: (id: string, icon: string) => {
+      set((state) => {
+        const nextContainers = state.containers.map((c) =>
+          c.id === id ? { ...c, icon } : c
+        );
+        persist({ ...state, containers: nextContainers });
+        return { containers: nextContainers };
       });
     },
 
     setActiveContainer: (id: string | null) => {
-      set({ activeContainerId: id });
+      set((prev) => {
+        persist({ ...prev, activeContainerId: id });
+        return { activeContainerId: id };
+      });
     },
 
     updateContainerModule: (id: string, moduleRoute: string) => {
-      set((state) => ({
-        containers: state.containers.map((c) =>
+      set((state) => {
+        const nextContainers = state.containers.map((c) =>
           c.id === id ? { ...c, moduleRoute } : c
-        ),
-      }));
+        );
+        persist({ ...state, containers: nextContainers });
+        return { containers: nextContainers };
+      });
     },
   };
 });

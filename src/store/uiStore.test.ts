@@ -64,4 +64,29 @@ describe('useUIStore', () => {
     expect(useUIStore.getState().containers).toHaveLength(1);
     expect(useUIStore.getState().activeContainerId).toBe(c2Id);
   });
+
+  it('should rename and update icon of containers', () => {
+    const cId = useUIStore.getState().addContainer('/cartera', 'Mi Cartera');
+    expect(useUIStore.getState().containers[0].name).toBe('Mi Cartera');
+
+    useUIStore.getState().renameContainer(cId, 'Setup Cripto Alfa');
+    expect(useUIStore.getState().containers[0].name).toBe('Setup Cripto Alfa');
+
+    useUIStore.getState().updateContainerIcon(cId, '💎');
+    expect(useUIStore.getState().containers[0].icon).toBe('💎');
+
+    useUIStore.getState().updateContainerModule(cId, '/cartera-iol');
+    expect(useUIStore.getState().containers[0].moduleRoute).toBe('/cartera-iol');
+  });
+
+  it('should persist containers and active container to localStorage', () => {
+    const cId = useUIStore.getState().addContainer('/chart', 'Grafico Principal', '📈');
+    expect(mockStorage['ticker-tape-ui']).toBeDefined();
+    
+    const parsed = JSON.parse(mockStorage['ticker-tape-ui']);
+    expect(parsed.containers).toHaveLength(1);
+    expect(parsed.containers[0].id).toBe(cId);
+    expect(parsed.containers[0].name).toBe('Grafico Principal');
+    expect(parsed.activeContainerId).toBe(cId);
+  });
 });
