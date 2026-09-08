@@ -7,9 +7,9 @@ export function TopBar() {
 
   const renderBadge = (name: string, value: 'connected' | 'mock' | 'disconnected', tooltipPrefix: string) => {
     const config = {
-      connected: { symbol: '✓', color: '#4caf50', title: 'Conectado (Real)' },
-      mock: { symbol: '~', color: '#fbc02d', title: 'Mock / Simulación' },
-      disconnected: { symbol: '✗', color: '#f44336', title: 'Desconectado' },
+      connected: { symbol: '●', color: 'var(--accent-mint)', bg: 'rgba(0, 245, 212, 0.12)', border: 'rgba(0, 245, 212, 0.35)', title: 'Conectado (Real)' },
+      mock: { symbol: '◐', color: 'var(--accent-peach)', bg: 'rgba(255, 224, 130, 0.12)', border: 'rgba(255, 224, 130, 0.35)', title: 'Mock / Simulación' },
+      disconnected: { symbol: '○', color: 'var(--signal-bearish)', bg: 'rgba(255, 51, 102, 0.12)', border: 'rgba(255, 51, 102, 0.35)', title: 'Desconectado' },
     }[value];
 
     return (
@@ -18,20 +18,23 @@ export function TopBar() {
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: '4px',
-          padding: '2px 6px',
-          border: `1px solid ${config.color}`,
-          borderRadius: '4px',
-          fontSize: '0.75rem',
-          fontWeight: 'bold',
+          gap: '5px',
+          padding: '3px 8px',
+          border: `1px solid ${config.border}`,
+          borderRadius: 'var(--radius-pill)',
+          fontSize: '0.72rem',
+          fontWeight: 700,
+          letterSpacing: '0.04em',
           color: config.color,
-          backgroundColor: `${config.color}10`,
+          backgroundColor: config.bg,
           cursor: 'help',
           userSelect: 'none',
+          boxShadow: value === 'connected' ? '0 0 10px rgba(0, 245, 212, 0.2)' : 'none',
+          transition: 'all var(--transition-fast)',
         }}
       >
+        <span style={{ fontSize: '0.65rem' }}>{config.symbol}</span>
         <span>{name}</span>
-        <span>{config.symbol}</span>
       </div>
     );
   };
@@ -43,25 +46,55 @@ export function TopBar() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        height: '48px',
+        height: '52px',
         padding: '0 20px',
-        borderBottom: '1px solid var(--border)',
-        backgroundColor: 'var(--bg-primary)',
+        borderBottom: '1px solid var(--border-subtle)',
+        backgroundColor: 'var(--bg-surface)',
         flexShrink: 0,
+        boxShadow: '0 2px 12px rgba(0, 0, 0, 0.25)',
       }}
     >
-      {/* Left: App title */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <span style={{ fontSize: '1.25rem', lineHeight: 1 }}>🎞️</span>
-        <span
+      {/* Left: App title & Brand */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div
           style={{
-            fontWeight: 700,
-            fontSize: '1rem',
-            color: 'var(--text-primary)',
-            letterSpacing: '-0.01em',
+            width: '28px',
+            height: '28px',
+            borderRadius: 'var(--radius-sm)',
+            background: 'linear-gradient(135deg, var(--accent-sakura), var(--accent-lavender))',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 0 12px rgba(255, 107, 157, 0.4)',
           }}
         >
-          Ticker Tape
+          <span style={{ fontSize: '1rem', lineHeight: 1 }}>📼</span>
+        </div>
+        <span
+          style={{
+            fontWeight: 800,
+            fontSize: '1.05rem',
+            letterSpacing: '0.02em',
+            background: 'linear-gradient(90deg, #FFFFFF 0%, var(--accent-sakura-soft) 100%)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            textShadow: '0 0 20px rgba(255, 107, 157, 0.2)',
+          }}
+        >
+          TICKER TAPE
+        </span>
+        <span
+          style={{
+            fontSize: '0.65rem',
+            padding: '1px 6px',
+            borderRadius: '4px',
+            backgroundColor: 'rgba(255, 107, 157, 0.15)',
+            color: 'var(--accent-sakura-soft)',
+            border: '1px solid rgba(255, 107, 157, 0.3)',
+            fontWeight: 700,
+          }}
+        >
+          CYBER-SAKURA
         </span>
       </div>
 
@@ -69,7 +102,7 @@ export function TopBar() {
       <div />
 
       {/* Right: health badges + override selector + theme toggle */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
         {/* Badges */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           {renderBadge('DB', status.db, 'Base de Datos (SQLite)')}
@@ -78,46 +111,49 @@ export function TopBar() {
           {renderBadge('BINANCE', status.binance, 'Proveedor de Criptomonedas (Binance API)')}
         </div>
 
-        {/* Dropdown */}
+        {/* Mode Selector */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <select
             value={override}
             onChange={(e) => setOverride(e.target.value as OverrideSetting)}
-            title="Seleccionar modo de simulación o conectividad real"
+            title="Seleccionar modo de conectividad"
             style={{
-              backgroundColor: 'var(--bg-secondary)',
+              backgroundColor: 'var(--bg-surface-card)',
               color: 'var(--text-primary)',
               border: '1px solid var(--border)',
-              borderRadius: 'var(--radius)',
-              padding: '4px 6px',
-              fontSize: '0.8rem',
+              borderRadius: 'var(--radius-sm)',
+              padding: '4px 8px',
+              fontSize: '0.78rem',
+              fontWeight: 600,
               cursor: 'pointer',
               outline: 'none',
+              transition: 'border-color var(--transition-fast)',
             }}
           >
-            <option value="Auto">Auto</option>
-            <option value="Real">Real</option>
-            <option value="Mock">Mock</option>
+            <option value="Auto">Mode: Auto</option>
+            <option value="Real">Mode: Real</option>
+            <option value="Mock">Mode: Mock</option>
           </select>
         </div>
 
         {/* Theme Toggle */}
         <button
           onClick={toggleTheme}
-          title={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
+          title={theme === 'light' ? 'Switch to Cyber Dark mode' : 'Switch to Cyber Light mode'}
           style={{
-            background: 'none',
+            background: 'var(--bg-surface-card)',
             border: '1px solid var(--border)',
-            borderRadius: 'var(--radius)',
-            padding: '4px 10px',
+            borderRadius: 'var(--radius-sm)',
+            padding: '5px 10px',
             cursor: 'pointer',
-            fontSize: '1rem',
+            fontSize: '0.9rem',
             lineHeight: 1,
             color: 'var(--text-primary)',
-            transition: 'background var(--transition)',
+            transition: 'all var(--transition-fast)',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
           }}
         >
-          {theme === 'light' ? '🌙' : '☀️'}
+          {theme === 'light' ? '🌙' : '🌸'}
         </button>
       </div>
     </header>

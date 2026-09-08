@@ -1,6 +1,7 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { commands, ProviderTestResult, PingResult, CacheItem } from '@/lib/tauri';
 import { useServiceStatusStore } from '@/store/serviceStatusStore';
+import { Card, Button, Badge } from '@/components/ui';
 
 export default function ProvidersModule() {
   const { status, pollStatus } = useServiceStatusStore();
@@ -98,47 +99,62 @@ export default function ProvidersModule() {
       case 'binance':
         return {
           label: 'Binance API (Crypto)',
-          color: '#f3ba2f',
-          bg: 'rgba(243, 186, 47, 0.15)',
-          border: '#f3ba2f',
+          color: 'var(--accent-mint)',
+          bg: 'rgba(0, 245, 212, 0.12)',
+          border: 'var(--accent-mint)',
           icon: '⚡',
         };
       case 'yahoo-finance':
         return {
           label: 'Yahoo Finance (Equities / ETFs)',
-          color: '#ab47bc',
-          bg: 'rgba(171, 71, 188, 0.15)',
-          border: '#ab47bc',
+          color: 'var(--accent-lavender)',
+          bg: 'rgba(179, 136, 255, 0.12)',
+          border: 'var(--accent-lavender)',
           icon: '📈',
         };
       case 'sqlite-cache':
         return {
           label: 'SQLite Cache Local',
-          color: '#29b6f6',
-          bg: 'rgba(41, 182, 246, 0.15)',
-          border: '#29b6f6',
+          color: 'var(--accent-sakura)',
+          bg: 'rgba(255, 107, 157, 0.12)',
+          border: 'var(--accent-sakura)',
           icon: '💾',
         };
       default:
         return {
           label: providerName,
-          color: '#888',
-          bg: 'rgba(136, 136, 136, 0.15)',
-          border: '#888',
+          color: 'var(--text-secondary)',
+          bg: 'rgba(255, 255, 255, 0.08)',
+          border: 'var(--border)',
           icon: '🌐',
         };
     }
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', paddingBottom: '40px' }}>
-      <div>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: '0 0 6px 0', color: 'var(--text-primary)' }}>
-          🔌 Diagnóstico & Control de Proveedores de Mercado
-        </h1>
-        <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-          Monitoreá el estado en tiempo real de los proveedores de datos, probá peticiones HTTP nativas y auditá la caché local.
-        </p>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', paddingBottom: '40px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <h1
+            style={{
+              fontSize: '1.4rem',
+              fontWeight: 800,
+              margin: '0 0 4px 0',
+              background: 'linear-gradient(90deg, #FFFFFF 0%, var(--accent-sakura-soft) 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              letterSpacing: '-0.01em',
+            }}
+          >
+            🔌 Diagnóstico & Control de Proveedores
+          </h1>
+          <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+            Inspeccioná la latencia en tiempo real de Binance y Yahoo Finance, auditá la caché SQLite y probá peticiones nativas.
+          </p>
+        </div>
+        <Badge variant="sakura" pulse>
+          SYSTEM ONLINE
+        </Badge>
       </div>
 
       <div
@@ -148,234 +164,128 @@ export default function ProvidersModule() {
           gap: '16px',
         }}
       >
-        <div
-          style={{
-            backgroundColor: 'var(--bg-secondary)',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--radius)',
-            padding: '16px',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between',
-            gap: '12px',
-          }}
-        >
+        <Card variant={status.binance === 'connected' ? 'glow-mint' : 'default'}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '1.5rem' }}>⚡</span>
+              <span style={{ fontSize: '1.4rem' }}>⚡</span>
               <div>
-                <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-bright)' }}>
                   Binance Provider
                 </h3>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Criptomonedas (Spot Klines)</span>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Criptomonedas (Spot Klines)</span>
               </div>
             </div>
-            <span
-              style={{
-                fontSize: '0.75rem',
-                fontWeight: 700,
-                padding: '2px 8px',
-                borderRadius: '12px',
-                backgroundColor: status.binance === 'connected' ? 'rgba(76, 175, 80, 0.15)' : 'rgba(244, 67, 54, 0.15)',
-                color: status.binance === 'connected' ? '#4caf50' : '#f44336',
-                border: `1px solid ${status.binance === 'connected' ? '#4caf50' : '#f44336'}`,
-              }}
-            >
-              {status.binance === 'connected' ? 'ONLINE ✓' : 'OFFLINE ✗'}
-            </span>
+            <Badge variant={status.binance === 'connected' ? 'mint' : 'bearish'} pulse>
+              {status.binance === 'connected' ? 'ONLINE' : 'OFFLINE'}
+            </Badge>
           </div>
 
-          <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <div><strong>Endpoint:</strong> <code>api.binance.com/api/v3</code></div>
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '4px', margin: '14px 0' }}>
+            <div><strong>Endpoint:</strong> <code style={{ color: 'var(--accent-mint)' }}>api.binance.com/api/v3</code></div>
             <div><strong>Activos:</strong> BTC, ETH, SOL, BNB, Altcoins</div>
             {pingResults.binance && (
-              <div style={{ color: pingResults.binance.online ? '#4caf50' : '#f44336', fontWeight: 600 }}>
+              <div style={{ color: pingResults.binance.online ? 'var(--signal-bullish)' : 'var(--signal-bearish)', fontWeight: 700 }}>
                 Latencia: {pingResults.binance.latency_ms} ms {pingResults.binance.error && `(${pingResults.binance.error})`}
               </div>
             )}
           </div>
 
-          <button
+          <Button
+            variant="mint"
+            size="sm"
             onClick={() => handlePing('binance')}
-            disabled={pinging.binance}
-            style={{
-              padding: '6px 12px',
-              backgroundColor: 'var(--bg-primary)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius)',
-              color: 'var(--text-primary)',
-              fontSize: '0.8125rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '6px',
-            }}
+            isLoading={pinging.binance}
+            style={{ width: '100%' }}
           >
-            {pinging.binance ? 'Probando...' : '⚡ Test Ping Binance'}
-          </button>
-        </div>
+            ⚡ Test Ping Binance
+          </Button>
+        </Card>
 
-        <div
-          style={{
-            backgroundColor: 'var(--bg-secondary)',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--radius)',
-            padding: '16px',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between',
-            gap: '12px',
-          }}
-        >
+        <Card variant={status.data === 'connected' ? 'glow-lavender' : 'default'}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '1.5rem' }}>📈</span>
+              <span style={{ fontSize: '1.4rem' }}>📈</span>
               <div>
-                <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-bright)' }}>
                   Yahoo Finance
                 </h3>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Acciones & ETFs Tradicionales</span>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Acciones & ETFs Tradicionales</span>
               </div>
             </div>
-            <span
-              style={{
-                fontSize: '0.75rem',
-                fontWeight: 700,
-                padding: '2px 8px',
-                borderRadius: '12px',
-                backgroundColor: status.data === 'connected' ? 'rgba(76, 175, 80, 0.15)' : 'rgba(244, 67, 54, 0.15)',
-                color: status.data === 'connected' ? '#4caf50' : '#f44336',
-                border: `1px solid ${status.data === 'connected' ? '#4caf50' : '#f44336'}`,
-              }}
-            >
-              {status.data === 'connected' ? 'ONLINE ✓' : 'OFFLINE ✗'}
-            </span>
+            <Badge variant={status.data === 'connected' ? 'lavender' : 'bearish'} pulse>
+              {status.data === 'connected' ? 'ONLINE' : 'OFFLINE'}
+            </Badge>
           </div>
 
-          <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <div><strong>Endpoint:</strong> <code>query2.finance.yahoo.com</code></div>
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '4px', margin: '14px 0' }}>
+            <div><strong>Endpoint:</strong> <code style={{ color: 'var(--accent-lavender)' }}>query2.finance.yahoo.com</code></div>
             <div><strong>Activos:</strong> SPY, QQQ, AAPL, NVDA, TSLA</div>
             {pingResults.yahoo && (
-              <div style={{ color: pingResults.yahoo.online ? '#4caf50' : '#f44336', fontWeight: 600 }}>
+              <div style={{ color: pingResults.yahoo.online ? 'var(--signal-bullish)' : 'var(--signal-bearish)', fontWeight: 700 }}>
                 Latencia: {pingResults.yahoo.latency_ms} ms {pingResults.yahoo.error && `(${pingResults.yahoo.error})`}
               </div>
             )}
           </div>
 
-          <button
+          <Button
+            variant="lavender"
+            size="sm"
             onClick={() => handlePing('yahoo')}
-            disabled={pinging.yahoo}
-            style={{
-              padding: '6px 12px',
-              backgroundColor: 'var(--bg-primary)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius)',
-              color: 'var(--text-primary)',
-              fontSize: '0.8125rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '6px',
-            }}
+            isLoading={pinging.yahoo}
+            style={{ width: '100%' }}
           >
-            {pinging.yahoo ? 'Probando...' : '📈 Test Ping Yahoo'}
-          </button>
-        </div>
+            📈 Test Ping Yahoo
+          </Button>
+        </Card>
 
-        <div
-          style={{
-            backgroundColor: 'var(--bg-secondary)',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--radius)',
-            padding: '16px',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between',
-            gap: '12px',
-          }}
-        >
+        <Card variant={status.db === 'connected' ? 'glow-sakura' : 'default'}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '1.5rem' }}>💾</span>
+              <span style={{ fontSize: '1.4rem' }}>💾</span>
               <div>
-                <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-bright)' }}>
                   SQLite Local Cache
                 </h3>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Persistencia Local (WAL Mode)</span>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Persistencia Local (WAL Mode)</span>
               </div>
             </div>
-            <span
-              style={{
-                fontSize: '0.75rem',
-                fontWeight: 700,
-                padding: '2px 8px',
-                borderRadius: '12px',
-                backgroundColor: status.db === 'connected' ? 'rgba(76, 175, 80, 0.15)' : 'rgba(244, 67, 54, 0.15)',
-                color: status.db === 'connected' ? '#4caf50' : '#f44336',
-                border: `1px solid ${status.db === 'connected' ? '#4caf50' : '#f44336'}`,
-              }}
-            >
-              {status.db === 'connected' ? 'ACTIVE ✓' : 'OFFLINE ✗'}
-            </span>
+            <Badge variant={status.db === 'connected' ? 'sakura' : 'bearish'} pulse>
+              {status.db === 'connected' ? 'ACTIVE' : 'OFFLINE'}
+            </Badge>
           </div>
 
-          <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '4px', margin: '14px 0' }}>
             <div><strong>Símbolos Cacheados:</strong> {cacheItems.length} activos</div>
             <div>
               <strong>Total Velas:</strong>{' '}
-              {cacheItems.reduce((acc, curr) => acc + curr.count, 0).toLocaleString()}
+              <span className="font-mono">{cacheItems.reduce((acc, curr) => acc + curr.count, 0).toLocaleString()}</span>
             </div>
             {pingResults.db && (
-              <div style={{ color: pingResults.db.online ? '#4caf50' : '#f44336', fontWeight: 600 }}>
+              <div style={{ color: pingResults.db.online ? 'var(--signal-bullish)' : 'var(--signal-bearish)', fontWeight: 700 }}>
                 Latencia DB: {pingResults.db.latency_ms} ms
               </div>
             )}
           </div>
 
-          <button
+          <Button
+            variant="sakura"
+            size="sm"
             onClick={() => handlePing('db')}
-            disabled={pinging.db}
-            style={{
-              padding: '6px 12px',
-              backgroundColor: 'var(--bg-primary)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius)',
-              color: 'var(--text-primary)',
-              fontSize: '0.8125rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '6px',
-            }}
+            isLoading={pinging.db}
+            style={{ width: '100%' }}
           >
-            {pinging.db ? 'Probando...' : '💾 Test Ping DB'}
-          </button>
-        </div>
+            💾 Test Ping DB
+          </Button>
+        </Card>
       </div>
 
-      <div
-        style={{
-          backgroundColor: 'var(--bg-secondary)',
-          border: '1px solid var(--border)',
-          borderRadius: 'var(--radius)',
-          padding: '20px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '16px',
-        }}
-      >
+      <Card style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+            <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-bright)' }}>
               🧪 Consola de Peticiones y Prueba de Fetch
             </h2>
-            <span style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
+            <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
               Dispará una petición de prueba para inspeccionar qué proveedor responde, su latencia y el payload devuelto.
             </span>
           </div>
@@ -387,13 +297,14 @@ export default function ProvidersModule() {
                 onClick={() => setSymbol(p)}
                 style={{
                   padding: '4px 8px',
-                  borderRadius: '4px',
-                  border: symbol === p ? '1px solid var(--accent)' : '1px solid var(--border)',
-                  backgroundColor: symbol === p ? 'var(--accent)' : 'var(--bg-primary)',
-                  color: symbol === p ? '#fff' : 'var(--text-primary)',
+                  borderRadius: 'var(--radius-sm)',
+                  border: symbol === p ? '1px solid var(--accent-sakura)' : '1px solid var(--border-subtle)',
+                  backgroundColor: symbol === p ? 'var(--accent-sakura)' : 'var(--bg-canvas)',
+                  color: symbol === p ? '#0B0D17' : 'var(--text-primary)',
                   fontSize: '0.75rem',
-                  fontWeight: 600,
+                  fontWeight: 700,
                   cursor: 'pointer',
+                  transition: 'all var(--transition-fast)',
                 }}
               >
                 {p}
@@ -404,38 +315,41 @@ export default function ProvidersModule() {
 
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Símbolo:</label>
+            <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Símbolo:</label>
             <input
               type="text"
               value={symbol}
               onChange={(e) => setSymbol(e.target.value.toUpperCase())}
               placeholder="BTC, ETH, SPY..."
+              className="font-mono"
               style={{
-                padding: '8px 12px',
-                borderRadius: 'var(--radius)',
+                padding: '7px 12px',
+                borderRadius: 'var(--radius-sm)',
                 border: '1px solid var(--border)',
-                backgroundColor: 'var(--bg-primary)',
-                color: 'var(--text-primary)',
+                backgroundColor: 'var(--bg-canvas)',
+                color: 'var(--text-bright)',
                 fontSize: '0.875rem',
-                fontWeight: 600,
+                fontWeight: 700,
                 width: '140px',
+                outline: 'none',
               }}
             />
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Rango Temporal:</label>
+            <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Rango Temporal:</label>
             <select
               value={range}
               onChange={(e) => setRange(e.target.value)}
               style={{
-                padding: '8px 12px',
-                borderRadius: 'var(--radius)',
+                padding: '7px 12px',
+                borderRadius: 'var(--radius-sm)',
                 border: '1px solid var(--border)',
-                backgroundColor: 'var(--bg-primary)',
+                backgroundColor: 'var(--bg-canvas)',
                 color: 'var(--text-primary)',
-                fontSize: '0.875rem',
+                fontSize: '0.85rem',
                 cursor: 'pointer',
+                outline: 'none',
               }}
             >
               <option value="1m">1 Mes (30 días)</option>
@@ -447,55 +361,37 @@ export default function ProvidersModule() {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingTop: '18px' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8125rem', color: 'var(--text-primary)', cursor: 'pointer' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', color: 'var(--text-secondary)', cursor: 'pointer' }}>
               <input
                 type="checkbox"
                 checked={forceRefresh}
                 onChange={(e) => setForceRefresh(e.target.checked)}
-                style={{ cursor: 'pointer' }}
+                style={{ cursor: 'pointer', accentColor: 'var(--accent-sakura)' }}
               />
-              <span>Forzar llamada a API remota (Bypass SQLite Cache)</span>
+              <span>Forzar llamada remota (Bypass SQLite Cache)</span>
             </label>
           </div>
 
           <div style={{ marginLeft: 'auto', paddingTop: '18px', display: 'flex', gap: '8px' }}>
-            <button
+            <Button
+              variant="sakura"
+              size="md"
               onClick={handleTestFetch}
+              isLoading={loading}
               disabled={loading || !symbol.trim()}
-              style={{
-                padding: '8px 16px',
-                backgroundColor: 'var(--accent)',
-                color: '#fff',
-                border: 'none',
-                borderRadius: 'var(--radius)',
-                fontWeight: 600,
-                fontSize: '0.875rem',
-                cursor: loading ? 'not-allowed' : 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
-              }}
             >
-              {loading ? 'Consultando Proveedor...' : '🚀 Ejecutar Fetch de Prueba'}
-            </button>
+              🚀 Ejecutar Fetch de Prueba
+            </Button>
 
-            <button
+            <Button
+              variant="outline"
+              size="md"
               onClick={() => handleClearCache(symbol)}
               title="Borrar velas de este activo en SQLite"
-              style={{
-                padding: '8px 12px',
-                backgroundColor: 'transparent',
-                color: '#f44336',
-                border: '1px solid #f44336',
-                borderRadius: 'var(--radius)',
-                fontWeight: 600,
-                fontSize: '0.8125rem',
-                cursor: 'pointer',
-              }}
+              style={{ color: 'var(--signal-bearish)', borderColor: 'var(--signal-bearish)' }}
             >
               🗑️ Limpiar Caché
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -503,11 +399,11 @@ export default function ProvidersModule() {
           <div
             style={{
               padding: '12px 16px',
-              backgroundColor: 'rgba(244, 67, 54, 0.1)',
-              border: '1px solid #f44336',
-              borderRadius: 'var(--radius)',
-              color: '#f44336',
-              fontSize: '0.875rem',
+              backgroundColor: 'rgba(255, 51, 102, 0.12)',
+              border: '1px solid var(--signal-bearish)',
+              borderRadius: 'var(--radius-sm)',
+              color: 'var(--signal-bearish)',
+              fontSize: '0.85rem',
             }}
           >
             <strong>❌ Error en la respuesta del proveedor:</strong> {errorMessage}
@@ -518,7 +414,7 @@ export default function ProvidersModule() {
           <div
             style={{
               marginTop: '8px',
-              borderTop: '1px solid var(--border)',
+              borderTop: '1px solid var(--border-subtle)',
               paddingTop: '16px',
               display: 'flex',
               flexDirection: 'column',
@@ -532,18 +428,18 @@ export default function ProvidersModule() {
                 gap: '12px',
               }}
             >
-              <div style={{ padding: '10px', backgroundColor: 'var(--bg-primary)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
-                <div style={{ fontSize: '0.6875rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Proveedor Utilizado</div>
+              <div style={{ padding: '10px 14px', backgroundColor: 'var(--bg-canvas)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Proveedor Utilizado</div>
                 <div style={{ marginTop: '4px' }}>
                   {(() => {
                     const b = getProviderBadge(testResult.provider_used);
                     return (
                       <span
                         style={{
-                          fontSize: '0.8125rem',
+                          fontSize: '0.78rem',
                           fontWeight: 700,
                           padding: '3px 8px',
-                          borderRadius: '4px',
+                          borderRadius: 'var(--radius-pill)',
                           color: b.color,
                           backgroundColor: b.bg,
                           border: `1px solid ${b.border}`,
@@ -557,31 +453,31 @@ export default function ProvidersModule() {
                 </div>
               </div>
 
-              <div style={{ padding: '10px', backgroundColor: 'var(--bg-primary)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
-                <div style={{ fontSize: '0.6875rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Latencia Total</div>
-                <div style={{ fontSize: '1.125rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
+              <div style={{ padding: '10px 14px', backgroundColor: 'var(--bg-canvas)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Latencia Total</div>
+                <div className="font-mono" style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--accent-mint)', marginTop: '2px' }}>
                   ⚡ {testResult.latency_ms} ms
                 </div>
               </div>
 
-              <div style={{ padding: '10px', backgroundColor: 'var(--bg-primary)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
-                <div style={{ fontSize: '0.6875rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Velas Recibidas</div>
-                <div style={{ fontSize: '1.125rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
-                  📊 {testResult.bars_count.toLocaleString()} velas
+              <div style={{ padding: '10px 14px', backgroundColor: 'var(--bg-canvas)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Velas Recibidas</div>
+                <div className="font-mono" style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-bright)', marginTop: '2px' }}>
+                  📊 {testResult.bars_count.toLocaleString()}
                 </div>
               </div>
 
-              <div style={{ padding: '10px', backgroundColor: 'var(--bg-primary)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
-                <div style={{ fontSize: '0.6875rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Rango Fechas</div>
-                <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-primary)', marginTop: '4px' }}>
+              <div style={{ padding: '10px 14px', backgroundColor: 'var(--bg-canvas)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Rango Fechas</div>
+                <div className="font-mono" style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-primary)', marginTop: '4px' }}>
                   {testResult.first_date || 'N/A'} → {testResult.last_date || 'N/A'}
                 </div>
               </div>
 
-              <div style={{ padding: '10px', backgroundColor: 'var(--bg-primary)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
-                <div style={{ fontSize: '0.6875rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Último Cierre / Min - Max</div>
-                <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-primary)', marginTop: '4px' }}>
-                  ${testResult.last_close?.toLocaleString() || '0'} <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>(${testResult.min_price?.toLocaleString()} - ${testResult.max_price?.toLocaleString()})</span>
+              <div style={{ padding: '10px 14px', backgroundColor: 'var(--bg-canvas)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Último Cierre / Min - Max</div>
+                <div className="font-mono" style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-bright)', marginTop: '4px' }}>
+                  ${testResult.last_close?.toLocaleString() || '0'} <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>(${testResult.min_price?.toLocaleString()} - ${testResult.max_price?.toLocaleString()})</span>
                 </div>
               </div>
             </div>
@@ -592,12 +488,12 @@ export default function ProvidersModule() {
                   onClick={() => setResultTab('table')}
                   style={{
                     padding: '6px 12px',
-                    borderRadius: 'var(--radius)',
+                    borderRadius: 'var(--radius-sm)',
                     border: 'none',
-                    backgroundColor: resultTab === 'table' ? 'var(--accent)' : 'var(--bg-primary)',
-                    color: resultTab === 'table' ? '#fff' : 'var(--text-secondary)',
-                    fontWeight: 600,
-                    fontSize: '0.8125rem',
+                    backgroundColor: resultTab === 'table' ? 'var(--accent-sakura)' : 'var(--bg-canvas)',
+                    color: resultTab === 'table' ? '#0B0D17' : 'var(--text-secondary)',
+                    fontWeight: 700,
+                    fontSize: '0.78rem',
                     cursor: 'pointer',
                   }}
                 >
@@ -607,12 +503,12 @@ export default function ProvidersModule() {
                   onClick={() => setResultTab('json')}
                   style={{
                     padding: '6px 12px',
-                    borderRadius: 'var(--radius)',
+                    borderRadius: 'var(--radius-sm)',
                     border: 'none',
-                    backgroundColor: resultTab === 'json' ? 'var(--accent)' : 'var(--bg-primary)',
-                    color: resultTab === 'json' ? '#fff' : 'var(--text-secondary)',
-                    fontWeight: 600,
-                    fontSize: '0.8125rem',
+                    backgroundColor: resultTab === 'json' ? 'var(--accent-sakura)' : 'var(--bg-canvas)',
+                    color: resultTab === 'json' ? '#0B0D17' : 'var(--text-secondary)',
+                    fontWeight: 700,
+                    fontSize: '0.78rem',
                     cursor: 'pointer',
                   }}
                 >
@@ -620,22 +516,22 @@ export default function ProvidersModule() {
                 </button>
               </div>
 
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
                 {testResult.cache_hit ? '💾 Obtenido desde SQLite Cache local' : '🌐 Obtenido vía HTTP desde API remota y persistido en SQLite'}
               </span>
             </div>
 
             {resultTab === 'table' ? (
-              <div style={{ overflowX: 'auto', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem', textAlign: 'left' }}>
+              <div style={{ overflowX: 'auto', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', textAlign: 'left' }}>
                   <thead>
-                    <tr style={{ backgroundColor: 'var(--bg-primary)', borderBottom: '1px solid var(--border)' }}>
-                      <th style={{ padding: '8px 12px' }}>Fecha</th>
-                      <th style={{ padding: '8px 12px' }}>Apertura (Open)</th>
-                      <th style={{ padding: '8px 12px' }}>Máximo (High)</th>
-                      <th style={{ padding: '8px 12px' }}>Mínimo (Low)</th>
-                      <th style={{ padding: '8px 12px' }}>Cierre (Close)</th>
-                      <th style={{ padding: '8px 12px' }}>Volumen</th>
+                    <tr style={{ backgroundColor: 'var(--bg-canvas)', borderBottom: '1px solid var(--border-subtle)' }}>
+                      <th style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>Fecha</th>
+                      <th style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>Apertura (Open)</th>
+                      <th style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>Máximo (High)</th>
+                      <th style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>Mínimo (Low)</th>
+                      <th style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>Cierre (Close)</th>
+                      <th style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>Volumen</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -643,16 +539,16 @@ export default function ProvidersModule() {
                       <tr
                         key={idx}
                         style={{
-                          borderBottom: '1px solid var(--border)',
-                          backgroundColor: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)',
+                          borderBottom: '1px solid var(--border-subtle)',
+                          backgroundColor: idx % 2 === 0 ? 'transparent' : 'rgba(255, 107, 157, 0.03)',
                         }}
                       >
-                        <td style={{ padding: '8px 12px', fontWeight: 600 }}>{b.date}</td>
-                        <td style={{ padding: '8px 12px' }}>${b.open.toFixed(2)}</td>
-                        <td style={{ padding: '8px 12px', color: '#4caf50' }}>${b.high.toFixed(2)}</td>
-                        <td style={{ padding: '8px 12px', color: '#f44336' }}>${b.low.toFixed(2)}</td>
-                        <td style={{ padding: '8px 12px', fontWeight: 700 }}>${b.close.toFixed(2)}</td>
-                        <td style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>{b.volume.toLocaleString()}</td>
+                        <td className="font-mono" style={{ padding: '8px 12px', fontWeight: 600 }}>{b.date}</td>
+                        <td className="font-mono" style={{ padding: '8px 12px' }}>${b.open.toFixed(2)}</td>
+                        <td className="font-mono" style={{ padding: '8px 12px', color: 'var(--signal-bullish)' }}>${b.high.toFixed(2)}</td>
+                        <td className="font-mono" style={{ padding: '8px 12px', color: 'var(--signal-bearish)' }}>${b.low.toFixed(2)}</td>
+                        <td className="font-mono" style={{ padding: '8px 12px', fontWeight: 700, color: 'var(--text-bright)' }}>${b.close.toFixed(2)}</td>
+                        <td className="font-mono" style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>{b.volume.toLocaleString()}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -660,16 +556,17 @@ export default function ProvidersModule() {
               </div>
             ) : (
               <pre
+                className="font-mono"
                 style={{
                   margin: 0,
                   padding: '16px',
-                  backgroundColor: 'var(--bg-primary)',
-                  borderRadius: 'var(--radius)',
-                  border: '1px solid var(--border)',
+                  backgroundColor: 'var(--bg-canvas)',
+                  borderRadius: 'var(--radius-sm)',
+                  border: '1px solid var(--border-subtle)',
                   fontSize: '0.75rem',
                   maxHeight: '300px',
                   overflowY: 'auto',
-                  color: 'var(--text-primary)',
+                  color: 'var(--accent-mint)',
                 }}
               >
                 {JSON.stringify(testResult, null, 2)}
@@ -677,22 +574,12 @@ export default function ProvidersModule() {
             )}
           </div>
         )}
-      </div>
+      </Card>
 
-      <div
-        style={{
-          backgroundColor: 'var(--bg-secondary)',
-          border: '1px solid var(--border)',
-          borderRadius: 'var(--radius)',
-          padding: '20px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '12px',
-        }}
-      >
+      <Card style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+            <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-bright)' }}>
               💾 Explorador de Caché Local en SQLite
             </h3>
             <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
@@ -700,47 +587,40 @@ export default function ProvidersModule() {
             </span>
           </div>
 
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={loadCacheOverview}
             disabled={loadingCache}
-            style={{
-              padding: '4px 10px',
-              backgroundColor: 'var(--bg-primary)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius)',
-              color: 'var(--text-primary)',
-              fontSize: '0.75rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-            }}
+            style={{ border: '1px solid var(--border-subtle)' }}
           >
             {loadingCache ? 'Cargando...' : '🔄 Refrescar Lista'}
-          </button>
+          </Button>
         </div>
 
         {cacheItems.length === 0 ? (
-          <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
+          <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
             No hay activos en caché todavía. Realizá un fetch arriba para almacenar datos.
           </div>
         ) : (
-          <div style={{ overflowX: 'auto', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem', textAlign: 'left' }}>
+          <div style={{ overflowX: 'auto', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', textAlign: 'left' }}>
               <thead>
-                <tr style={{ backgroundColor: 'var(--bg-primary)', borderBottom: '1px solid var(--border)' }}>
-                  <th style={{ padding: '8px 12px' }}>Símbolo</th>
-                  <th style={{ padding: '8px 12px' }}>Cantidad de Velas</th>
-                  <th style={{ padding: '8px 12px' }}>Fecha Inicial</th>
-                  <th style={{ padding: '8px 12px' }}>Fecha Final</th>
-                  <th style={{ padding: '8px 12px', textAlign: 'right' }}>Acciones</th>
+                <tr style={{ backgroundColor: 'var(--bg-canvas)', borderBottom: '1px solid var(--border-subtle)' }}>
+                  <th style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>Símbolo</th>
+                  <th style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>Cantidad de Velas</th>
+                  <th style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>Fecha Inicial</th>
+                  <th style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>Fecha Final</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'right', color: 'var(--text-secondary)' }}>Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 {cacheItems.map((item) => (
-                  <tr key={item.symbol} style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td style={{ padding: '8px 12px', fontWeight: 700 }}>{item.symbol}</td>
-                    <td style={{ padding: '8px 12px' }}>{item.count.toLocaleString()}</td>
-                    <td style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>{item.min_date || 'N/A'}</td>
-                    <td style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>{item.max_date || 'N/A'}</td>
+                  <tr key={item.symbol} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                    <td className="font-mono" style={{ padding: '8px 12px', fontWeight: 800, color: 'var(--accent-sakura)' }}>{item.symbol}</td>
+                    <td className="font-mono" style={{ padding: '8px 12px' }}>{item.count.toLocaleString()}</td>
+                    <td className="font-mono" style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>{item.min_date || 'N/A'}</td>
+                    <td className="font-mono" style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>{item.max_date || 'N/A'}</td>
                     <td style={{ padding: '8px 12px', textAlign: 'right' }}>
                       <button
                         onClick={() => {
@@ -750,11 +630,11 @@ export default function ProvidersModule() {
                         }}
                         style={{
                           padding: '3px 8px',
-                          backgroundColor: 'var(--bg-primary)',
-                          border: '1px solid var(--border)',
+                          backgroundColor: 'var(--bg-canvas)',
+                          border: '1px solid var(--border-subtle)',
                           borderRadius: '4px',
                           color: 'var(--text-primary)',
-                          fontSize: '0.75rem',
+                          fontSize: '0.72rem',
                           fontWeight: 600,
                           cursor: 'pointer',
                           marginRight: '6px',
@@ -767,10 +647,10 @@ export default function ProvidersModule() {
                         style={{
                           padding: '3px 8px',
                           backgroundColor: 'transparent',
-                          border: '1px solid #f44336',
+                          border: '1px solid var(--signal-bearish)',
                           borderRadius: '4px',
-                          color: '#f44336',
-                          fontSize: '0.75rem',
+                          color: 'var(--signal-bearish)',
+                          fontSize: '0.72rem',
                           fontWeight: 600,
                           cursor: 'pointer',
                         }}
@@ -784,7 +664,7 @@ export default function ProvidersModule() {
             </table>
           </div>
         )}
-      </div>
+      </Card>
     </div>
   );
 }

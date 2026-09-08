@@ -1,28 +1,92 @@
 :root {
-  /* Light theme (default) */
-  --bg-primary: #ffffff;
-  --bg-secondary: #f5f5f5;
-  --bg-tertiary: #e8e8e8;
-  --text-primary: #1a1a1a;
-  --text-secondary: #666666;
-  --accent: #2196f3;
-  --accent-hover: #1976d2;
-  --border: #e0e0e0;
-  --sidebar-width: 240px;
-  --sidebar-collapsed-width: 64px;
-  --radius: 8px;
-  --shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  --transition: 0.3s ease;
+  /* ── Retrofuturistic Dark Kawaii Matrix (Cyber-Sakura Noir) ── */
+  
+  /* Canvas & Surfaces */
+  --bg-canvas: #0B0D17;
+  --bg-surface: #121526;
+  --bg-surface-card: #191D32;
+  --bg-surface-card-hover: #212642;
+  --bg-surface-glass: rgba(25, 29, 50, 0.75);
+  --bg-surface-overlay: rgba(11, 13, 23, 0.85);
+
+  /* Legacy Compatibility Mappings */
+  --bg-primary: #0B0D17;
+  --bg-secondary: #121526;
+  --bg-tertiary: #191D32;
+  
+  /* Typography */
+  --text-primary: #F0F3FF;
+  --text-secondary: #9DA5C5;
+  --text-muted: #656C8A;
+  --text-bright: #FFFFFF;
+
+  /* Primary Cyber-Sakura Accents */
+  --accent-sakura: #FF6B9D;
+  --accent-sakura-hover: #FF85B3;
+  --accent-sakura-soft: #FFA3C1;
+  --accent-sakura-muted: rgba(255, 107, 157, 0.15);
+  --accent-sakura-glow: rgba(255, 107, 157, 0.35);
+
+  /* Secondary Cyber-Kawaii Accents */
+  --accent-lavender: #B388FF;
+  --accent-lavender-hover: #C9A7FF;
+  --accent-lavender-muted: rgba(179, 136, 255, 0.15);
+
+  --accent-mint: #00F5D4;
+  --accent-mint-hover: #5CFFE7;
+  --accent-mint-muted: rgba(0, 245, 212, 0.15);
+
+  --accent-peach: #FFE082;
+  --accent-peach-hover: #FFECB3;
+
+  /* Global Accent (Defaulted to Sakura Pink) */
+  --accent: #FF6B9D;
+  --accent-hover: #FF85B3;
+
+  /* Trading & Financial Signal Matrix */
+  --signal-bullish: #00F5A0;
+  --signal-bullish-muted: rgba(0, 245, 160, 0.15);
+  --signal-bearish: #FF3366;
+  --signal-bearish-muted: rgba(255, 51, 102, 0.15);
+  --signal-neutral: #8C93B5;
+
+  /* Borders & Dividers */
+  --border: rgba(255, 107, 157, 0.18);
+  --border-subtle: rgba(255, 107, 157, 0.12);
+  --border-focus: #FF6B9D;
+  --border-mint: rgba(0, 245, 212, 0.3);
+
+  /* Layout Spacing & Geometry */
+  --sidebar-width: 250px;
+  --sidebar-collapsed-width: 68px;
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 9999px;
+
+  /* Glows & Shadows */
+  --shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.35);
+  --glow-sakura: 0 0 16px rgba(255, 107, 157, 0.35);
+  --glow-mint: 0 0 16px rgba(0, 245, 212, 0.35);
+  --glow-lavender: 0 0 16px rgba(179, 136, 255, 0.35);
+
+  /* Animation & Transitions */
+  --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-[data-theme='dark'] {
-  --bg-primary: #1a1a2e;
-  --bg-secondary: #16213e;
-  --bg-tertiary: #0f3460;
-  --text-primary: #e8e8e8;
-  --text-secondary: #a0a0a0;
-  --accent: #64b5f6;
-  --accent-hover: #42a5f5;
-  --border: #2a2a4a;
-  --shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+[data-theme='light'] {
+  --bg-canvas: #FAF7F9;
+  --bg-surface: #FFFFFF;
+  --bg-surface-card: #F2EEF5;
+  --bg-surface-card-hover: #E9E3EF;
+  --bg-primary: #FAF7F9;
+  --bg-secondary: #FFFFFF;
+  --bg-tertiary: #F2EEF5;
+  --text-primary: #1F1B2C;
+  --text-secondary: #6B627E;
+  --border: rgba(255, 107, 157, 0.25);
+  --border-subtle: rgba(255, 107, 157, 0.15);
 }
+

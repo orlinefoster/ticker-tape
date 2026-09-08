@@ -51,8 +51,8 @@ export function Sidebar() {
         display: 'flex',
         flexDirection: 'column',
         height: '100%',
-        backgroundColor: 'var(--bg-secondary)',
-        borderRight: '1px solid var(--border)',
+        backgroundColor: 'var(--bg-surface)',
+        borderRight: '1px solid var(--border-subtle)',
         transition: 'width var(--transition)',
         userSelect: 'none',
       }}
@@ -61,10 +61,10 @@ export function Sidebar() {
       <nav
         className="sidebar-nav"
         style={{
-          padding: '12px 8px',
+          padding: '16px 10px',
           display: 'flex',
           flexDirection: 'column',
-          gap: '4px',
+          gap: '6px',
           overflowY: 'auto',
         }}
       >
@@ -82,18 +82,36 @@ export function Sidebar() {
                 gap: sidebarCollapsed ? '0' : '12px',
                 width: '100%',
                 padding: sidebarCollapsed ? '12px 0' : '10px 14px',
-                border: 'none',
-                background: isActive ? 'var(--accent)' : 'transparent',
-                color: isActive ? '#ffffff' : 'var(--text-primary)',
+                border: isActive ? '1px solid var(--border)' : '1px solid transparent',
+                background: isActive
+                  ? 'linear-gradient(90deg, rgba(255, 107, 157, 0.22) 0%, rgba(255, 107, 157, 0.05) 100%)'
+                  : 'transparent',
+                color: isActive ? 'var(--text-bright)' : 'var(--text-secondary)',
                 cursor: 'pointer',
                 fontSize: '0.875rem',
                 borderRadius: 'var(--radius)',
                 justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
-                transition: 'all 0.15s ease',
-                fontWeight: isActive ? 600 : 400,
+                transition: 'all var(--transition-fast)',
+                fontWeight: isActive ? 700 : 500,
+                boxShadow: isActive ? '0 0 16px rgba(255, 107, 157, 0.15)' : 'none',
+                position: 'relative',
               }}
             >
-              <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>{item.icon}</span>
+              {isActive && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    left: '0',
+                    top: '20%',
+                    bottom: '20%',
+                    width: '3px',
+                    backgroundColor: 'var(--accent-sakura)',
+                    borderRadius: '0 2px 2px 0',
+                    boxShadow: '0 0 8px var(--accent-sakura)',
+                  }}
+                />
+              )}
+              <span style={{ fontSize: '1.15rem', lineHeight: 1 }}>{item.icon}</span>
               {!sidebarCollapsed && <span>{item.label}</span>}
             </button>
           );
@@ -101,7 +119,7 @@ export function Sidebar() {
       </nav>
 
       {/* Divider */}
-      <div style={{ margin: '8px 12px', borderTop: '1px solid var(--border)' }} />
+      <div style={{ margin: '8px 14px', borderTop: '1px solid var(--border-subtle)' }} />
 
       {/* Lower Nav Section: Dynamic Modules & Multi-Window slots */}
       <div
