@@ -82,9 +82,9 @@ export function Sidebar() {
                 gap: sidebarCollapsed ? '0' : '12px',
                 width: '100%',
                 padding: sidebarCollapsed ? '12px 0' : '10px 14px',
-                border: isActive ? '1px solid var(--border)' : '1px solid transparent',
+                border: isActive ? '1px solid rgba(255, 107, 157, 0.35)' : '1px solid transparent',
                 background: isActive
-                  ? 'linear-gradient(90deg, rgba(255, 107, 157, 0.22) 0%, rgba(255, 107, 157, 0.05) 100%)'
+                  ? 'linear-gradient(90deg, rgba(255, 107, 157, 0.22) 0%, rgba(179, 136, 255, 0.16) 35%, rgba(0, 229, 255, 0.12) 70%, rgba(0, 245, 212, 0.04) 100%)'
                   : 'transparent',
                 color: isActive ? 'var(--text-bright)' : 'var(--text-secondary)',
                 cursor: 'pointer',
@@ -93,7 +93,7 @@ export function Sidebar() {
                 justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
                 transition: 'all var(--transition-fast)',
                 fontWeight: isActive ? 700 : 500,
-                boxShadow: isActive ? '0 0 16px rgba(255, 107, 157, 0.15)' : 'none',
+                boxShadow: isActive ? 'var(--holo-glow)' : 'none',
                 position: 'relative',
               }}
             >
@@ -102,12 +102,12 @@ export function Sidebar() {
                   style={{
                     position: 'absolute',
                     left: '0',
-                    top: '20%',
-                    bottom: '20%',
+                    top: '15%',
+                    bottom: '15%',
                     width: '3px',
-                    backgroundColor: 'var(--accent-sakura)',
+                    background: 'var(--holo-gradient)',
                     borderRadius: '0 2px 2px 0',
-                    boxShadow: '0 0 8px var(--accent-sakura)',
+                    boxShadow: '0 0 10px rgba(0, 229, 255, 0.6)',
                   }}
                 />
               )}

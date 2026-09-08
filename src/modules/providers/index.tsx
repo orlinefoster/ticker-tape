@@ -374,7 +374,7 @@ export default function ProvidersModule() {
 
           <div style={{ marginLeft: 'auto', paddingTop: '18px', display: 'flex', gap: '8px' }}>
             <Button
-              variant="sakura"
+              variant="holo"
               size="md"
               onClick={handleTestFetch}
               isLoading={loading}

@@ -38,6 +38,32 @@ body {
   font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
+@keyframes holoShift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.holo-gradient-text {
+  background: var(--holo-gradient);
+  background-size: 250% 250%;
+  animation: holoShift 8s ease infinite;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.holo-sheen {
+  background: var(--holo-gradient-subtle);
+  background-size: 200% 200%;
+  animation: holoShift 10s ease infinite;
+}
+
 .text-sakura {
   color: var(--accent-sakura);
 }
@@ -64,6 +90,10 @@ body {
 
 .glow-lavender {
   box-shadow: var(--glow-lavender);
+}
+
+.glow-holo {
+  box-shadow: var(--holo-glow);
 }
 
 /* ── Glassmorphism Card ──────────────────────────────── */

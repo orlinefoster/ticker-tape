@@ -1,7 +1,7 @@
-﻿import React from 'react';
+import React from 'react';
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'sakura' | 'mint' | 'lavender' | 'outline' | 'ghost';
+  variant?: 'sakura' | 'mint' | 'lavender' | 'holo' | 'outline' | 'ghost';
   size?: 'sm' | 'md' | 'lg';
   isLoading?: boolean;
 }
@@ -29,6 +29,14 @@ export const Button: React.FC<ButtonProps> = ({
 
   const getVariantStyles = (): React.CSSProperties => {
     switch (variant) {
+      case 'holo':
+        return {
+          background: 'var(--holo-gradient)',
+          backgroundSize: '200% 200%',
+          color: '#0B0D17',
+          border: 'none',
+          boxShadow: 'var(--holo-glow)',
+        };
       case 'mint':
         return {
           background: 'var(--accent-mint)',

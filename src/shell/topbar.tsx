@@ -61,24 +61,22 @@ export function TopBar() {
             width: '28px',
             height: '28px',
             borderRadius: 'var(--radius-sm)',
-            background: 'linear-gradient(135deg, var(--accent-sakura), var(--accent-lavender))',
+            background: 'var(--holo-gradient)',
+            backgroundSize: '200% 200%',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            boxShadow: '0 0 12px rgba(255, 107, 157, 0.4)',
+            boxShadow: 'var(--holo-glow)',
           }}
         >
           <span style={{ fontSize: '1rem', lineHeight: 1 }}>📼</span>
         </div>
         <span
+          className="holo-gradient-text"
           style={{
-            fontWeight: 800,
-            fontSize: '1.05rem',
-            letterSpacing: '0.02em',
-            background: 'linear-gradient(90deg, #FFFFFF 0%, var(--accent-sakura-soft) 100%)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            textShadow: '0 0 20px rgba(255, 107, 157, 0.2)',
+            fontWeight: 900,
+            fontSize: '1.1rem',
+            letterSpacing: '0.04em',
           }}
         >
           TICKER TAPE
@@ -86,15 +84,17 @@ export function TopBar() {
         <span
           style={{
             fontSize: '0.65rem',
-            padding: '1px 6px',
-            borderRadius: '4px',
-            backgroundColor: 'rgba(255, 107, 157, 0.15)',
-            color: 'var(--accent-sakura-soft)',
-            border: '1px solid rgba(255, 107, 157, 0.3)',
-            fontWeight: 700,
+            padding: '2px 7px',
+            borderRadius: 'var(--radius-pill)',
+            backgroundImage: 'var(--holo-gradient-subtle)',
+            color: 'var(--text-bright)',
+            border: '1px solid rgba(255, 107, 157, 0.35)',
+            fontWeight: 800,
+            letterSpacing: '0.05em',
+            boxShadow: '0 0 10px rgba(179, 136, 255, 0.2)',
           }}
         >
-          CYBER-SAKURA
+          HOLO-SAKURA
         </span>
       </div>
 

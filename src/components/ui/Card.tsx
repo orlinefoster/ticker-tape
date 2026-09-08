@@ -1,7 +1,7 @@
-﻿import React from 'react';
+import React from 'react';
 
 export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
-  variant?: 'default' | 'glass' | 'glow-sakura' | 'glow-mint' | 'glow-lavender';
+  variant?: 'default' | 'glass' | 'glow-sakura' | 'glow-mint' | 'glow-lavender' | 'holo' | 'holo-border';
   children: React.ReactNode;
 }
 
@@ -14,6 +14,21 @@ export const Card: React.FC<CardProps> = ({
 }) => {
   const getVariantStyles = (): React.CSSProperties => {
     switch (variant) {
+      case 'holo':
+        return {
+          background: 'linear-gradient(135deg, var(--bg-surface-card) 0%, rgba(25, 29, 50, 0.9) 100%)',
+          border: '1px solid rgba(255, 107, 157, 0.28)',
+          boxShadow: 'var(--holo-glow)',
+          backgroundImage: 'var(--holo-gradient-subtle)',
+          backgroundSize: '200% 200%',
+        };
+      case 'holo-border':
+        return {
+          background: 'var(--bg-surface-card)',
+          border: '1px solid transparent',
+          borderImage: 'var(--holo-border) 1',
+          boxShadow: 'var(--holo-glow)',
+        };
       case 'glass':
         return {
           background: 'var(--bg-surface-glass)',
