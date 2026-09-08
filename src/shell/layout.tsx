@@ -9,6 +9,7 @@ import ElliottWaveModule from '@/modules/elliott_wave';
 import RelativePerfModule from '@/modules/relative_perf';
 import BacktestingModule from '@/modules/backtesting';
 import PortfolioModule from '@/modules/portfolio';
+import CarteraModule from '@/modules/cartera';
 import MonitorModule from '@/modules/monitor';
 import MarketChartModule from '@/modules/chart';
 import ProvidersModule from '@/modules/providers';
@@ -23,13 +24,14 @@ interface ModuleEntry {
 const modules: Record<string, ModuleEntry> = {
   '/': { name: 'Dashboard', component: <Dashboard /> },
   '/chart': { name: 'Gráfico de Mercado', component: <MarketChartModule /> },
+  '/cartera': { name: 'Cartera Binance', component: <CarteraModule /> },
   '/providers': { name: 'Diagnóstico de Proveedores', component: <ProvidersModule /> },
   '/intermarket': { name: 'Intermarket', component: <IntermarketModule /> },
   '/topology': { name: 'Market Topology', component: <TopologyModule /> },
   '/relative-perf': { name: 'Alpha Rotation Radar', component: <RelativePerfModule /> },
   '/backtesting': { name: 'Backtesting Module', component: <BacktestingModule /> },
   '/elliott': { name: 'Elliott Wave', component: <ElliottWaveModule /> },
-  '/portfolio': { name: 'Portfolio', component: <PortfolioModule /> },
+  '/portfolio': { name: 'Portfolio Multi-Activos', component: <PortfolioModule /> },
   '/monitor': { name: 'Monitor', component: <MonitorModule /> },
 };
 

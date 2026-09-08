@@ -9,6 +9,8 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { route: '/', label: 'Dashboard', icon: '📊' },
+  { route: '/cartera', label: 'Cartera Binance', icon: '⚡' },
+  { route: '/portfolio', label: 'Portfolio Multi', icon: '💼' },
   { route: '/chart', label: 'Gráfico', icon: '📉' },
   { route: '/providers', label: 'Proveedores', icon: '🔌' },
   { route: '/intermarket', label: 'Intermarket', icon: '🔄' },
@@ -16,7 +18,6 @@ const navItems: NavItem[] = [
   { route: '/relative-perf', label: 'Alpha Rotation', icon: '📡' },
   { route: '/backtesting', label: 'Backtesting', icon: '📈' },
   { route: '/elliott', label: 'Elliott Wave', icon: '🌊' },
-  { route: '/portfolio', label: 'Portfolio', icon: '💼' },
   { route: '/monitor', label: 'Monitor', icon: '👁️' },
 ];
 
