@@ -83,3 +83,63 @@ Analysis:"#,
 
     Ok(response.response)
 }
+
+/// Ping local Ollama instance URL to check connectivity.
+pub async fn ping_ollama_url(url: &str) -> bool {
+    let client_res = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_millis(1500))
+        .timeout(std::time::Duration::from_millis(1500))
+        .build();
+
+    let client = match client_res {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+
+    match client.get(url).send().await {
+        Ok(resp) => resp.status().is_success(),
+        Err(_) => false,
+    }
+}
+
+/// Ping local Ollama instance to check connectivity.
+pub async fn ping_ollama() -> bool {
+    ping_ollama_url("http://localhost:11434").await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::net::TcpListener;
+    use tokio::io::AsyncWriteExt;
+
+    #[tokio::test]
+    async fn test_ping_ollama_failure() {
+        // Hitting an unused port should fail/return false
+        let res = ping_ollama_url("http://127.0.0.1:1").await;
+        assert!(!res);
+    }
+
+    #[tokio::test]
+    async fn test_ping_ollama_success() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let url = format!("http://{}", addr);
+
+        tokio::spawn(async move {
+            if let Ok((mut socket, _)) = listener.accept().await {
+                let mut buf = [0u8; 1024];
+                use tokio::io::AsyncReadExt;
+                let _ = socket.read(&mut buf).await;
+
+                let response = "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Length: 17\r\n\r\nOllama is running";
+                let _ = socket.write_all(response.as_bytes()).await;
+                let _ = socket.shutdown().await;
+            }
+        });
+
+        let res = ping_ollama_url(&url).await;
+        assert!(res);
+    }
+}
+

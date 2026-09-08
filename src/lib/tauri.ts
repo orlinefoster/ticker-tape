@@ -1,7 +1,81 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 
-// Re-export for direct use in modules
-export { invoke };
+// Check if running inside the native Tauri runtime
+export const isTauri = (): boolean => {
+  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+};
+
+// Safe invoke wrapper with browser fallback to prevent unhandled TypeErrors in dev browser
+export const invoke = async <T = any>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+  if (isTauri()) {
+    return tauriInvoke<T>(cmd, args);
+  }
+
+  console.warn(`[Tauri IPC] Running outside native Tauri runtime. Command "${cmd}" intercepted in browser.`);
+
+  switch (cmd) {
+    case 'greet':
+      return 'Hello from Browser Mock!' as unknown as T;
+    case 'check_services_status':
+      return { db: true, ai: false, data: true, binance: true } as unknown as T;
+    case 'fetch_market_data':
+      return [] as unknown as T;
+    case 'run_strategy':
+      return [] as unknown as T;
+    case 'run_backtest':
+      return {
+        total_return: 0,
+        annualized_return: 0,
+        sharpe: 0,
+        max_drawdown: 0,
+        win_rate: 0,
+        num_trades: 0,
+        equity_curve: [],
+      } as unknown as T;
+    case 'run_analysis':
+      return {} as unknown as T;
+    case 'load_wave_labels':
+      return [] as unknown as T;
+    case 'save_wave_labels':
+      return 0 as unknown as T;
+    case 'recount_waves':
+      return [] as unknown as T;
+    case 'analyze_market_ai':
+      return 'Modo navegador: conectate desde la app nativa de Tauri para interactuar con Ollama y el backend Rust.' as unknown as T;
+    case 'query_ollama':
+      return 'Modo navegador: Ollama está disponible en la app nativa de escritorio.' as unknown as T;
+    case 'test_provider_fetch':
+      return {
+        symbol: (args?.symbol as string) || 'BTCUSDT',
+        provider_used: 'browser-mock',
+        cache_hit: false,
+        bars_count: 0,
+        latency_ms: 0,
+        first_date: null,
+        last_date: null,
+        first_close: null,
+        last_close: null,
+        min_price: null,
+        max_price: null,
+        total_volume: 0,
+        bars_sample: [],
+      } as unknown as T;
+    case 'ping_provider_test':
+      return {
+        provider: (args?.provider as string) || 'unknown',
+        online: true,
+        latency_ms: 45,
+        endpoint: 'https://api.binance.com (web fallback)',
+        error: null,
+      } as unknown as T;
+    case 'clear_symbol_cache':
+      return 0 as unknown as T;
+    case 'get_cache_stats':
+      return [] as unknown as T;
+    default:
+      return null as unknown as T;
+  }
+};
 
 // Types matching Rust structs (serde serialized across IPC)
 export interface OHLCVBar {

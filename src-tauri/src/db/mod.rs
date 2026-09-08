@@ -83,3 +83,42 @@ pub fn get_db() -> Result<&'static Pool<Sqlite>> {
         .get()
         .ok_or_else(|| anyhow::anyhow!("Database not initialized. Call init_db() first."))
 }
+
+/// Verify the global SQLite database pool is initialized and responsive.
+pub async fn ping_db() -> Result<()> {
+    let pool = get_db()?;
+    sqlx::query("SELECT 1")
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_ping_db_uninitialized() {
+        let res = ping_db().await;
+        assert!(res.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_ping_db_success() {
+        // Create a temp database file
+        let db_path = std::env::temp_dir().join(format!("test_ping_{}.db", uuid::Uuid::new_v4()));
+        
+        // init_db requires migrations to be present. Let's make sure init_db is called successfully.
+        if get_db().is_err() {
+            let _ = init_db(&db_path).await;
+        }
+
+        let res = ping_db().await;
+        
+        // Clean up
+        let _ = std::fs::remove_file(&db_path);
+
+        assert!(res.is_ok());
+    }
+}
+

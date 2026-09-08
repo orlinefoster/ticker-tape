@@ -1,0 +1,30 @@
+schema: spec-driven
+
+context: |
+  Tech stack: Rust (Tauri v2 backend) + React 18 + TypeScript + Vite + Zustand 5 + SQLite (sqlx) + Ollama client.
+  Architecture: Tauri cross-platform app, core trading engine in Rust, presentation in React UI, SQLite local-first storage.
+  Testing: Frontend tests using Vitest, backend tests using Cargo test.
+  Style: Strict types in TypeScript, Rust 2024 edition patterns.
+
+rules:
+  proposal:
+    - Include rollback plan for risky changes
+  specs:
+    - Use Given/When/Then for scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+  design:
+    - Include sequence diagrams for complex flows
+    - Document architecture decisions with rationale
+  tasks:
+    - Group by phase, use hierarchical numbering
+    - Keep tasks completable in one session
+  apply:
+    - Follow existing code patterns
+    tdd: true
+    test_command: "pnpm test && cargo test"
+  verify:
+    test_command: "pnpm test && cargo test"
+    build_command: "pnpm run build && cargo build"
+    coverage_threshold: 0
+  archive:
+    - Warn before merging destructive deltas

@@ -39,3 +39,9 @@ logs/
 *.db-wal
 *.db-shm
 data/
+
+# Docs
+docs/
+
+# Shortcuts
+*.lnk
