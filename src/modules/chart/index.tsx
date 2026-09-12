@@ -112,6 +112,8 @@ export default function MarketChartModule() {
   const [bars, setBars] = useState<OHLCVBar[]>([]);
   const [loading, setLoading] = useState(false);
   const [hoveredBar, setHoveredBar] = useState<OHLCVBar | null>(null);
+  const [isMockData, setIsMockData] = useState(false);
+  const [providerUsed, setProviderUsed] = useState<string>('');
 
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -151,14 +153,24 @@ export default function MarketChartModule() {
   const loadMarketData = async (sym: string, tf: string) => {
     setLoading(true);
     try {
+      const diag = await commands.testProviderFetch(sym, tf, false, 'auto');
       const fetched = await commands.fetchMarketData(sym, tf);
       if (fetched && fetched.length > 0) {
         setBars(fetched);
+        setProviderUsed(diag.provider_used || 'unknown');
+        const isMock =
+          (diag.provider_used || '').toLowerCase().includes('mock') ||
+          (diag.provider_used || '').toLowerCase().includes('synthetic');
+        setIsMockData(isMock);
       } else {
         setBars(generateMockBars(sym, tf));
+        setProviderUsed('browser-mock-generator');
+        setIsMockData(true);
       }
     } catch {
       setBars(generateMockBars(sym, tf));
+      setProviderUsed('browser-mock-generator');
+      setIsMockData(true);
     } finally {
       setLoading(false);
     }
@@ -664,6 +676,55 @@ export default function MarketChartModule() {
           </button>
         </div>
       </header>
+
+      {/* BIG PROMINENT MOCK DATA WARNING BANNER */}
+      {isMockData && (
+        <div
+          style={{
+            backgroundColor: '#FFE600',
+            color: '#000000',
+            padding: '10px 16px',
+            fontSize: '0.82rem',
+            fontWeight: 800,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            borderBottom: '2px solid #E6CF00',
+            zIndex: 30,
+            boxShadow: '0 2px 8px rgba(255, 230, 0, 0.3)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontSize: '1.4rem' }}>⚠️</span>
+            <div>
+              <div style={{ fontSize: '0.85rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.02em' }}>
+                MODO SIMULACIÓN / MOCK DATA ACTIVO (TICKER: {symbol})
+              </div>
+              <span style={{ fontSize: '0.74rem', fontWeight: 600, opacity: 0.9 }}>
+                Yahoo Finance no responde directamente en navegadores por restricciones de origen (CORS). Se muestran velas de prueba sintéticas ({providerUsed}).
+              </span>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.72rem', fontWeight: 700, opacity: 0.85 }}>
+              💡 Probá tickers Crypto (BTC, ETH) o usá la app nativa de Tauri para cotizaciones de acciones en vivo.
+            </span>
+            <span
+              style={{
+                padding: '4px 10px',
+                backgroundColor: '#000000',
+                color: '#FFE600',
+                borderRadius: '4px',
+                fontSize: '0.72rem',
+                fontWeight: 900,
+                letterSpacing: '0.05em',
+              }}
+            >
+              MOCK SIMULATION
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Main Body Grid */}
       <div style={styles.tvBody}>

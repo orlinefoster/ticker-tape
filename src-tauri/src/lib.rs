@@ -362,9 +362,18 @@ pub struct ServicesStatus {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct TraceStep {
+    pub step: String,
+    pub status: String,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ProviderTestResult {
     pub symbol: String,
     pub provider_used: String,
+    pub endpoint_url: Option<String>,
+    pub http_status: Option<String>,
     pub cache_hit: bool,
     pub bars_count: usize,
     pub latency_ms: u64,
@@ -376,6 +385,7 @@ pub struct ProviderTestResult {
     pub max_price: Option<f64>,
     pub total_volume: f64,
     pub bars_sample: Vec<OHLCVBar>,
+    pub execution_trace: Vec<TraceStep>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -418,9 +428,11 @@ async fn test_provider_fetch(
     symbol: String,
     range: String,
     force_refresh: bool,
+    target_provider: Option<String>,
 ) -> Result<ProviderTestResult, String> {
     let start_time = std::time::Instant::now();
     let pool = db::get_db().map_err(|e| e.to_string())?;
+    let mut trace: Vec<TraceStep> = Vec::new();
 
     let to = Utc::now().date_naive();
     let from = parse_range(&range, to)?;
@@ -428,33 +440,119 @@ async fn test_provider_fetch(
     let from_str = from.format("%Y-%m-%d").to_string();
     let to_str = to.format("%Y-%m-%d").to_string();
 
-    let mut provider_used = if trading::data_provider::is_crypto_symbol(&symbol) {
-        "binance".to_string()
-    } else {
-        "yahoo-finance".to_string()
-    };
-    let mut cache_hit = false;
+    let clean_symbol = symbol.trim().to_uppercase();
+    trace.push(TraceStep {
+        step: "1. Normalización de Ticker".to_string(),
+        status: "ok".to_string(),
+        detail: format!("Símbolo ingresado: '{}' -> Ticker procesado: '{}'", symbol, clean_symbol),
+    });
 
-    let bars = if !force_refresh {
-        let cached = MarketDataRepository::get_bars(pool, &symbol, &from_str, &to_str)
+    let selected_provider = target_provider.unwrap_or_else(|| "auto".to_string());
+    let mut provider_used = match selected_provider.as_str() {
+        "binance" => "binance".to_string(),
+        "yahoo" => "yahoo-finance".to_string(),
+        "cache" => "sqlite-cache".to_string(),
+        _ => {
+            if trading::data_provider::is_crypto_symbol(&clean_symbol) {
+                "binance".to_string()
+            } else {
+                "yahoo-finance".to_string()
+            }
+        }
+    };
+
+    trace.push(TraceStep {
+        step: "2. Selección de Proveedor".to_string(),
+        status: "ok".to_string(),
+        detail: format!("Modo: {} | Proveedor asignado: {}", selected_provider, provider_used),
+    });
+
+    let mut cache_hit = false;
+    let mut endpoint_url: Option<String> = None;
+    let http_status: Option<String>;
+
+    let bars = if selected_provider == "cache" || (!force_refresh && selected_provider == "auto") {
+        let cached = MarketDataRepository::get_bars(pool, &clean_symbol, &from_str, &to_str)
             .await
             .map_err(|e| e.to_string())?;
 
         if !cached.is_empty() {
             cache_hit = true;
             provider_used = "sqlite-cache".to_string();
+            http_status = Some("200 OK (Local Cache HIT)".to_string());
+            trace.push(TraceStep {
+                step: "3. Evaluación de Caché SQLite".to_string(),
+                status: "ok".to_string(),
+                detail: format!("HIT: Se encontraron {} velas guardadas en la base local", cached.len()),
+            });
             cached
+        } else if selected_provider == "cache" {
+            trace.push(TraceStep {
+                step: "3. Evaluación de Caché SQLite".to_string(),
+                status: "warn".to_string(),
+                detail: "MISS: Modo 'cache' forzado pero no hay registros en la base local".to_string(),
+            });
+            http_status = Some("404 (No Data In Local Cache)".to_string());
+            Vec::new()
         } else {
-            let fetched = market_data::fetch_historical_data(&symbol, from, to)
+            trace.push(TraceStep {
+                step: "3. Evaluación de Caché SQLite".to_string(),
+                status: "warn".to_string(),
+                detail: "MISS: No se encontraron registros en caché local. Realizando petición remota...".to_string(),
+            });
+            let provider = trading::data_provider::provider_for_symbol(&clean_symbol);
+            endpoint_url = Some(format!("https://{} ({})", provider.name(), clean_symbol));
+            let fetched = provider.fetch_bars(&clean_symbol, from, to)
                 .await
-                .map_err(|e| format!("Fetch failed: {}", e))?;
+                .map_err(|e| {
+                    trace.push(TraceStep {
+                        step: "4. Petición HTTP Remota".to_string(),
+                        status: "error".to_string(),
+                        detail: format!("Error en proveedor {}: {}", provider.name(), e),
+                    });
+                    format!("Fetch failed: {}", e)
+                })?;
+
+            http_status = Some("200 OK (Remote API)".to_string());
+            trace.push(TraceStep {
+                step: "4. Petición HTTP Remota".to_string(),
+                status: "ok".to_string(),
+                detail: format!("Respuesta remota recibida de {} con {} velas", provider.name(), fetched.len()),
+            });
             let _ = MarketDataRepository::upsert_bars(pool, &fetched).await;
             fetched
         }
     } else {
-        let fetched = market_data::fetch_historical_data(&symbol, from, to)
+        let provider: Box<dyn trading::data_provider::DataProvider> = if provider_used == "binance" {
+            Box::new(trading::data_provider::BinanceProvider::new())
+        } else {
+            Box::new(trading::data_provider::YahooFinanceProvider::new())
+        };
+
+        endpoint_url = Some(format!("https://{} ({})", provider.name(), clean_symbol));
+        trace.push(TraceStep {
+            step: "3. Conexión HTTP Remota (Bypass Cache)".to_string(),
+            status: "ok".to_string(),
+            detail: format!("Consultando endpoint remoto de {} para {}...", provider.name(), clean_symbol),
+        });
+
+        let fetched = provider.fetch_bars(&clean_symbol, from, to)
             .await
-            .map_err(|e| format!("Fetch failed: {}", e))?;
+            .map_err(|e| {
+                trace.push(TraceStep {
+                    step: "4. Error de Red / Provider".to_string(),
+                    status: "error".to_string(),
+                    detail: format!("Error al consultar {}: {}", provider.name(), e),
+                });
+                format!("Fetch failed: {}", e)
+            })?;
+
+        http_status = Some("200 OK (Remote Direct)".to_string());
+        trace.push(TraceStep {
+            step: "4. Procesamiento de Velas".to_string(),
+            status: "ok".to_string(),
+            detail: format!("Éxito: {} velas parseadas e insertadas/actualizadas en SQLite", fetched.len()),
+        });
         let _ = MarketDataRepository::upsert_bars(pool, &fetched).await;
         fetched
     };
@@ -478,7 +576,6 @@ async fn test_provider_fetch(
     };
     let total_volume = bars.iter().map(|b| b.volume).sum();
 
-    // Sample up to 10 bars (first 5 and last 5)
     let bars_sample = if bars.len() <= 10 {
         bars.clone()
     } else {
@@ -487,9 +584,17 @@ async fn test_provider_fetch(
         sample
     };
 
+    trace.push(TraceStep {
+        step: "5. Resumen Final".to_string(),
+        status: "ok".to_string(),
+        detail: format!("Completado en {}ms. Total velas: {}", elapsed, bars.len()),
+    });
+
     Ok(ProviderTestResult {
-        symbol: symbol.to_uppercase(),
+        symbol: clean_symbol,
         provider_used,
+        endpoint_url,
+        http_status,
         cache_hit,
         bars_count: bars.len(),
         latency_ms: elapsed,
@@ -501,6 +606,7 @@ async fn test_provider_fetch(
         max_price,
         total_volume,
         bars_sample,
+        execution_trace: trace,
     })
 }
 

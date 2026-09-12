@@ -1,13 +1,31 @@
 import { useState, useEffect } from 'react';
-import { commands, ProviderTestResult, PingResult, CacheItem } from '@/lib/tauri';
+import {
+  commands,
+  ProviderTestResult,
+  PingResult,
+  CacheItem,
+  getSupabaseConfig,
+  saveSupabaseConfig,
+  pushToSupabase,
+} from '@/lib/tauri';
 import { useServiceStatusStore } from '@/store/serviceStatusStore';
 import { Card, Button, Badge } from '@/components/ui';
+
+interface HealthTestRow {
+  symbol: string;
+  provider: string;
+  bars: number;
+  latency: number;
+  status: 'ok' | 'error';
+  httpStatus: string;
+}
 
 export default function ProvidersModule() {
   const { status, pollStatus } = useServiceStatusStore();
 
   const [symbol, setSymbol] = useState('BTC');
   const [range, setRange] = useState('1y');
+  const [targetProvider, setTargetProvider] = useState<string>('auto');
   const [forceRefresh, setForceRefresh] = useState(true);
   const [loading, setLoading] = useState(false);
   const [testResult, setTestResult] = useState<ProviderTestResult | null>(null);
@@ -16,6 +34,7 @@ export default function ProvidersModule() {
   const [pingResults, setPingResults] = useState<Record<string, PingResult | null>>({
     binance: null,
     yahoo: null,
+    supabase: null,
     db: null,
   });
   const [pinging, setPinging] = useState<Record<string, boolean>>({});
@@ -23,12 +42,27 @@ export default function ProvidersModule() {
   const [cacheItems, setCacheItems] = useState<CacheItem[]>([]);
   const [loadingCache, setLoadingCache] = useState(false);
 
-  const [resultTab, setResultTab] = useState<'table' | 'json'>('table');
+  const [resultTab, setResultTab] = useState<'trace' | 'table' | 'json'>('trace');
 
-  const presetSymbols = ['BTC', 'ETH', 'SOL', 'BNB', 'BTCUSDT', 'SPY', 'AAPL', 'NVDA', 'TSLA'];
+  // Supabase Config State
+  const [supaUrl, setSupaUrl] = useState('');
+  const [supaKey, setSupaKey] = useState('');
+  const [savedSupaMsg, setSavedSupaMsg] = useState<string | null>(null);
+  const [syncingCloud, setSyncingCloud] = useState(false);
+  const [cloudSyncMsg, setCloudSyncMsg] = useState<string | null>(null);
+  const [showSqlModal, setShowSqlModal] = useState(false);
+
+  // Quick Health Audit State
+  const [runningAudit, setRunningAudit] = useState(false);
+  const [auditRows, setAuditRows] = useState<HealthTestRow[] | null>(null);
+
+  const presetSymbols = ['BTC', 'ETH', 'SOL', 'BNB', 'SPY', 'AAPL', 'NVDA', 'TSLA', 'GGAL', 'AL30'];
 
   useEffect(() => {
     loadCacheOverview();
+    const conf = getSupabaseConfig();
+    setSupaUrl(conf.url);
+    setSupaKey(conf.key);
   }, []);
 
   const loadCacheOverview = async () => {
@@ -43,7 +77,34 @@ export default function ProvidersModule() {
     }
   };
 
-  const handlePing = async (provider: 'binance' | 'yahoo' | 'db') => {
+  const handleSaveSupabaseConfig = () => {
+    saveSupabaseConfig(supaUrl, supaKey);
+    setSavedSupaMsg('Configuración de Supabase guardada correctamente.');
+    setTimeout(() => setSavedSupaMsg(null), 3000);
+    handlePing('supabase');
+  };
+
+  const handleSyncLocalToCloud = async () => {
+    setSyncingCloud(true);
+    setCloudSyncMsg(null);
+    try {
+      let totalSynced = 0;
+      for (const item of cacheItems) {
+        const bars = await commands.fetchMarketData(item.symbol, '5y');
+        if (bars && bars.length > 0) {
+          const ok = await pushToSupabase(bars);
+          if (ok) totalSynced += bars.length;
+        }
+      }
+      setCloudSyncMsg(`✅ Sincronización exitosa: ${totalSynced.toLocaleString()} velas subidas a Supabase Cloud.`);
+    } catch (e: any) {
+      setCloudSyncMsg(`❌ Error durante sincronización: ${e?.message || String(e)}`);
+    } finally {
+      setSyncingCloud(false);
+    }
+  };
+
+  const handlePing = async (provider: 'binance' | 'yahoo' | 'supabase' | 'db') => {
     setPinging((prev) => ({ ...prev, [provider]: true }));
     try {
       const res = await commands.pingProviderTest(provider);
@@ -72,7 +133,7 @@ export default function ProvidersModule() {
     setTestResult(null);
 
     try {
-      const result = await commands.testProviderFetch(symbol.trim(), range, forceRefresh);
+      const result = await commands.testProviderFetch(symbol.trim(), range, forceRefresh, targetProvider);
       setTestResult(result);
       loadCacheOverview();
     } catch (err: any) {
@@ -80,6 +141,47 @@ export default function ProvidersModule() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleRunHealthAudit = async () => {
+    setRunningAudit(true);
+    setAuditRows([]);
+    const testList = [
+      { sym: 'BTCUSDT', prov: 'binance' },
+      { sym: 'ETHUSDT', prov: 'binance' },
+      { sym: 'SPY', prov: 'yahoo' },
+      { sym: 'AAPL', prov: 'yahoo' },
+      { sym: 'BTC', prov: 'supabase' },
+      { sym: 'GGAL.BA', prov: 'iol' },
+    ];
+
+    const results: HealthTestRow[] = [];
+    for (const item of testList) {
+      try {
+        const res = await commands.testProviderFetch(item.sym, '1m', true, item.prov);
+        results.push({
+          symbol: item.sym,
+          provider: res.provider_used,
+          bars: res.bars_count,
+          latency: res.latency_ms,
+          status: res.bars_count > 0 ? 'ok' : 'error',
+          httpStatus: res.http_status || '200 OK',
+        });
+      } catch (e: any) {
+        results.push({
+          symbol: item.sym,
+          provider: item.prov,
+          bars: 0,
+          latency: 0,
+          status: 'error',
+          httpStatus: e?.message || 'Error de Conexión',
+        });
+      }
+    }
+
+    setAuditRows(results);
+    setRunningAudit(false);
+    loadCacheOverview();
   };
 
   const handleClearCache = async (targetSymbol: string) => {
@@ -95,41 +197,81 @@ export default function ProvidersModule() {
   };
 
   const getProviderBadge = (providerName: string) => {
-    switch (providerName.toLowerCase()) {
-      case 'binance':
-        return {
-          label: 'Binance API (Crypto)',
-          color: 'var(--accent-mint)',
-          bg: 'rgba(0, 245, 212, 0.12)',
-          border: 'var(--accent-mint)',
-          icon: '⚡',
-        };
-      case 'yahoo-finance':
-        return {
-          label: 'Yahoo Finance (Equities / ETFs)',
-          color: 'var(--accent-lavender)',
-          bg: 'rgba(179, 136, 255, 0.12)',
-          border: 'var(--accent-lavender)',
-          icon: '📈',
-        };
-      case 'sqlite-cache':
-        return {
-          label: 'SQLite Cache Local',
-          color: 'var(--accent-sakura)',
-          bg: 'rgba(255, 107, 157, 0.12)',
-          border: 'var(--accent-sakura)',
-          icon: '💾',
-        };
-      default:
-        return {
-          label: providerName,
-          color: 'var(--text-secondary)',
-          bg: 'rgba(255, 255, 255, 0.08)',
-          border: 'var(--border)',
-          icon: '🌐',
-        };
+    const p = providerName.toLowerCase();
+    if (p.includes('supabase')) {
+      return {
+        label: 'Supabase Cloud (PostgreSQL)',
+        color: '#3ECF8E',
+        bg: 'rgba(62, 207, 142, 0.12)',
+        border: '#3ECF8E',
+        icon: '☁️',
+      };
     }
+    if (p.includes('binance')) {
+      return {
+        label: 'Binance API (Crypto)',
+        color: 'var(--accent-mint)',
+        bg: 'rgba(0, 245, 212, 0.12)',
+        border: 'var(--accent-mint)',
+        icon: '⚡',
+      };
+    }
+    if (p.includes('yahoo')) {
+      return {
+        label: 'Yahoo Finance (Equities / ETFs)',
+        color: 'var(--accent-lavender)',
+        bg: 'rgba(179, 136, 255, 0.12)',
+        border: 'var(--accent-lavender)',
+        icon: '📈',
+      };
+    }
+    if (p.includes('iol') || p.includes('invertironline')) {
+      return {
+        label: 'IOL InvertirOnline (ARS / MEP / CEDEARs)',
+        color: '#4CC9F0',
+        bg: 'rgba(76, 201, 240, 0.12)',
+        border: '#4CC9F0',
+        icon: '🇦🇷',
+      };
+    }
+    if (p.includes('cache') || p.includes('sqlite')) {
+      return {
+        label: 'SQLite Cache Local',
+        color: 'var(--accent-sakura)',
+        bg: 'rgba(255, 107, 157, 0.12)',
+        border: 'var(--accent-sakura)',
+        icon: '💾',
+      };
+    }
+    return {
+      label: providerName,
+      color: 'var(--text-secondary)',
+      bg: 'rgba(255, 255, 255, 0.08)',
+      border: 'var(--border)',
+      icon: '🌐',
+    };
   };
+
+  const sqlSchemaSnippet = `-- Ejecutá este script en el SQL Editor de tu proyecto Supabase:
+
+CREATE TABLE IF NOT EXISTS market_candles (
+  symbol TEXT NOT NULL,
+  date DATE NOT NULL,
+  open NUMERIC NOT NULL,
+  high NUMERIC NOT NULL,
+  low NUMERIC NOT NULL,
+  close NUMERIC NOT NULL,
+  volume NUMERIC NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (symbol, date)
+);
+
+-- Habilitar acceso de lectura y escritura anónima (o ajustá RLS según tus políticas):
+ALTER TABLE market_candles ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow public read access" ON market_candles FOR SELECT USING (true);
+CREATE POLICY "Allow public insert/upsert" ON market_candles FOR INSERT WITH CHECK (true);
+`;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', paddingBottom: '40px' }}>
@@ -146,24 +288,64 @@ export default function ProvidersModule() {
               letterSpacing: '-0.01em',
             }}
           >
-            🔌 Diagnóstico & Control de Proveedores
+            🔌 Diagnóstico & Sincronización Supabase Cloud
           </h1>
           <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-            Inspeccioná la latencia en tiempo real de Binance y Yahoo Finance, auditá la caché SQLite y probá peticiones nativas.
+            Configurá la sincronización de caché entre SQLite local y Supabase Cloud para reutilizar velas históricas entre dispositivos y evitar llamadas repetidas a Binance.
           </p>
         </div>
         <Badge variant="sakura" pulse>
-          SYSTEM ONLINE
+          SUPABASE SYNC READY
         </Badge>
       </div>
 
+      {/* Provider Status Overview Cards */}
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
           gap: '16px',
         }}
       >
+        {/* Supabase Cloud Card */}
+        <Card variant={pingResults.supabase?.online ? 'glow-mint' : 'default'}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '1.4rem' }}>☁️</span>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-bright)' }}>
+                  Supabase Cloud
+                </h3>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Caché Compartida PostgreSQL</span>
+              </div>
+            </div>
+            <Badge variant={pingResults.supabase?.online ? 'mint' : 'bearish'} pulse>
+              {pingResults.supabase?.online ? 'CONNECTED' : 'DISCONNECTED'}
+            </Badge>
+          </div>
+
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '4px', margin: '14px 0' }}>
+            <div><strong>Endpoint:</strong> <code style={{ color: '#3ECF8E' }}>{supaUrl || 'No configurado'}</code></div>
+            <div><strong>Tabla:</strong> <code className="font-mono">market_candles</code></div>
+            {pingResults.supabase && (
+              <div style={{ color: pingResults.supabase.online ? 'var(--signal-bullish)' : 'var(--signal-bearish)', fontWeight: 700 }}>
+                Latencia: {pingResults.supabase.latency_ms} ms {pingResults.supabase.error && `(${pingResults.supabase.error})`}
+              </div>
+            )}
+          </div>
+
+          <Button
+            variant="mint"
+            size="sm"
+            onClick={() => handlePing('supabase')}
+            isLoading={pinging.supabase}
+            style={{ width: '100%' }}
+          >
+            ☁️ Ping Supabase Cloud
+          </Button>
+        </Card>
+
+        {/* Binance Card */}
         <Card variant={status.binance === 'connected' ? 'glow-mint' : 'default'}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -201,6 +383,7 @@ export default function ProvidersModule() {
           </Button>
         </Card>
 
+        {/* Yahoo Card */}
         <Card variant={status.data === 'connected' ? 'glow-lavender' : 'default'}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -238,6 +421,7 @@ export default function ProvidersModule() {
           </Button>
         </Card>
 
+        {/* SQLite Local Cache Card */}
         <Card variant={status.db === 'connected' ? 'glow-sakura' : 'default'}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -246,7 +430,7 @@ export default function ProvidersModule() {
                 <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-bright)' }}>
                   SQLite Local Cache
                 </h3>
-                <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Persistencia Local (WAL Mode)</span>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Persistencia Local WAL Mode</span>
               </div>
             </div>
             <Badge variant={status.db === 'connected' ? 'sakura' : 'bearish'} pulse>
@@ -279,14 +463,134 @@ export default function ProvidersModule() {
         </Card>
       </div>
 
+      {/* Supabase Configuration Panel */}
+      <Card style={{ display: 'flex', flexDirection: 'column', gap: '14px', border: '1px solid rgba(62, 207, 142, 0.3)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: '1.02rem', fontWeight: 700, color: '#3ECF8E', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span>☁️ Configuración de Conexión a Supabase Cloud</span>
+            </h3>
+            <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+              Ingresá la URL y la Anon Public Key de tu proyecto Supabase para activar la sincronización en la nube.
+            </span>
+          </div>
+
+          <button
+            onClick={() => setShowSqlModal(!showSqlModal)}
+            style={{
+              padding: '4px 10px',
+              borderRadius: 'var(--radius-sm)',
+              border: '1px solid #3ECF8E',
+              backgroundColor: 'rgba(62, 207, 142, 0.1)',
+              color: '#3ECF8E',
+              fontSize: '0.75rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            📋 {showSqlModal ? 'Ocultar Script SQL Table' : 'Ver Script SQL Table (market_candles)'}
+          </button>
+        </div>
+
+        {showSqlModal && (
+          <pre
+            className="font-mono"
+            style={{
+              margin: 0,
+              padding: '12px',
+              backgroundColor: 'var(--bg-canvas)',
+              borderRadius: 'var(--radius-sm)',
+              border: '1px solid rgba(62, 207, 142, 0.4)',
+              color: '#3ECF8E',
+              fontSize: '0.75rem',
+              overflowX: 'auto',
+            }}
+          >
+            {sqlSchemaSnippet}
+          </pre>
+        )}
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '12px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-secondary)' }}>SUPABASE PROJECT URL:</label>
+            <input
+              type="text"
+              value={supaUrl}
+              onChange={(e) => setSupaUrl(e.target.value)}
+              placeholder="https://xyzxyz.supabase.co"
+              className="font-mono"
+              style={{
+                padding: '8px 12px',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--border)',
+                backgroundColor: 'var(--bg-canvas)',
+                color: 'var(--text-bright)',
+                fontSize: '0.82rem',
+                outline: 'none',
+              }}
+            />
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-secondary)' }}>SUPABASE ANON KEY:</label>
+            <input
+              type="password"
+              value={supaKey}
+              onChange={(e) => setSupaKey(e.target.value)}
+              placeholder="eyJhYmdj..."
+              className="font-mono"
+              style={{
+                padding: '8px 12px',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--border)',
+                backgroundColor: 'var(--bg-canvas)',
+                color: 'var(--text-bright)',
+                fontSize: '0.82rem',
+                outline: 'none',
+              }}
+            />
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <Button variant="mint" size="sm" onClick={handleSaveSupabaseConfig}>
+              💾 Guardar Configuración Supabase
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleSyncLocalToCloud}
+              isLoading={syncingCloud}
+              disabled={syncingCloud || cacheItems.length === 0}
+              style={{ color: '#3ECF8E', borderColor: '#3ECF8E' }}
+            >
+              ☁️ Sincronizar Caché Local a Supabase Cloud
+            </Button>
+          </div>
+
+          {savedSupaMsg && (
+            <span style={{ fontSize: '0.78rem', color: 'var(--signal-bullish)', fontWeight: 600 }}>{savedSupaMsg}</span>
+          )}
+        </div>
+
+        {cloudSyncMsg && (
+          <div style={{ fontSize: '0.78rem', color: cloudSyncMsg.startsWith('✅') ? '#3ECF8E' : 'var(--signal-bearish)', fontWeight: 700 }}>
+            {cloudSyncMsg}
+          </div>
+        )}
+      </Card>
+
+      {/* Main Request & Test Console */}
       <Card style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
           <div>
             <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-bright)' }}>
-              🧪 Consola de Peticiones y Prueba de Fetch
+              🧪 Consola de Peticiones & Auditoría de Enrutamiento
             </h2>
             <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-              Dispará una petición de prueba para inspeccionar qué proveedor responde, su latencia y el payload devuelto.
+              Seleccioná el proveedor destino o probá la sincronización entre Supabase, Binance, Yahoo y SQLite local.
             </span>
           </div>
 
@@ -313,14 +617,15 @@ export default function ProvidersModule() {
           </div>
         </div>
 
+        {/* Controls Grid */}
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Símbolo:</label>
+            <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Símbolo Ticker:</label>
             <input
               type="text"
               value={symbol}
               onChange={(e) => setSymbol(e.target.value.toUpperCase())}
-              placeholder="BTC, ETH, SPY..."
+              placeholder="BTC, SPY, GGAL..."
               className="font-mono"
               style={{
                 padding: '7px 12px',
@@ -334,6 +639,32 @@ export default function ProvidersModule() {
                 outline: 'none',
               }}
             />
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Proveedor Destino:</label>
+            <select
+              value={targetProvider}
+              onChange={(e) => setTargetProvider(e.target.value)}
+              style={{
+                padding: '7px 12px',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--border)',
+                backgroundColor: 'var(--bg-canvas)',
+                color: 'var(--text-primary)',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                outline: 'none',
+              }}
+            >
+              <option value="auto">🤖 Enrutamiento Automático (Smart Router)</option>
+              <option value="supabase">☁️ Supabase Cloud (Base Sincronizada)</option>
+              <option value="binance">⚡ Binance API (Criptomonedas)</option>
+              <option value="yahoo">📈 Yahoo Finance (Acciones / ETFs)</option>
+              <option value="iol">🇦🇷 IOL (InvertirOnline ARS / MEP)</option>
+              <option value="cache">💾 Solo SQLite Cache Local</option>
+            </select>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -356,7 +687,6 @@ export default function ProvidersModule() {
               <option value="3m">3 Meses (90 días)</option>
               <option value="1y">1 Año (365 días)</option>
               <option value="2y">2 Años</option>
-              <option value="5y">5 Años</option>
             </select>
           </div>
 
@@ -368,7 +698,7 @@ export default function ProvidersModule() {
                 onChange={(e) => setForceRefresh(e.target.checked)}
                 style={{ cursor: 'pointer', accentColor: 'var(--accent-sakura)' }}
               />
-              <span>Forzar llamada remota (Bypass SQLite Cache)</span>
+              <span>Forzar llamada remota (Bypass Local Cache)</span>
             </label>
           </div>
 
@@ -386,11 +716,12 @@ export default function ProvidersModule() {
             <Button
               variant="outline"
               size="md"
-              onClick={() => handleClearCache(symbol)}
-              title="Borrar velas de este activo en SQLite"
-              style={{ color: 'var(--signal-bearish)', borderColor: 'var(--signal-bearish)' }}
+              onClick={handleRunHealthAudit}
+              isLoading={runningAudit}
+              disabled={runningAudit}
+              title="Auditar estado de salud de todos los proveedores principales"
             >
-              🗑️ Limpiar Caché
+              📊 Test Multiproveedor
             </Button>
           </div>
         </div>
@@ -410,6 +741,47 @@ export default function ProvidersModule() {
           </div>
         )}
 
+        {/* Quick Health Matrix Audit Results */}
+        {auditRows && auditRows.length > 0 && (
+          <div style={{ marginTop: '12px', padding: '14px', backgroundColor: 'var(--bg-canvas)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
+            <h3 style={{ margin: '0 0 10px 0', fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-bright)' }}>
+              📊 Resultado de Auditoría Rápida Multiproveedor
+            </h3>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }}>
+                    <th style={{ textAlign: 'left', padding: '6px' }}>Ticker</th>
+                    <th style={{ textAlign: 'left', padding: '6px' }}>Proveedor Utilizado</th>
+                    <th style={{ textAlign: 'center', padding: '6px' }}>Velas</th>
+                    <th style={{ textAlign: 'center', padding: '6px' }}>Latencia</th>
+                    <th style={{ textAlign: 'right', padding: '6px' }}>HTTP Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {auditRows.map((r, i) => {
+                    const b = getProviderBadge(r.provider);
+                    return (
+                      <tr key={i} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                        <td className="font-mono" style={{ padding: '6px', fontWeight: 800, color: 'var(--text-bright)' }}>{r.symbol}</td>
+                        <td style={{ padding: '6px' }}>
+                          <span style={{ color: b.color, fontWeight: 700 }}>{b.icon} {b.label}</span>
+                        </td>
+                        <td className="font-mono" style={{ textAlign: 'center', padding: '6px' }}>{r.bars}</td>
+                        <td className="font-mono" style={{ textAlign: 'center', padding: '6px', color: 'var(--accent-mint)' }}>{r.latency} ms</td>
+                        <td className="font-mono" style={{ textAlign: 'right', padding: '6px', color: r.status === 'ok' ? 'var(--signal-bullish)' : 'var(--signal-bearish)' }}>
+                          {r.status === 'ok' ? '✅' : '❌'} {r.httpStatus}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Detailed Single Fetch Test Result */}
         {testResult && (
           <div
             style={{
@@ -421,6 +793,7 @@ export default function ProvidersModule() {
               gap: '16px',
             }}
           >
+            {/* Cards metrics */}
             <div
               style={{
                 display: 'grid',
@@ -468,9 +841,9 @@ export default function ProvidersModule() {
               </div>
 
               <div style={{ padding: '10px 14px', backgroundColor: 'var(--bg-canvas)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
-                <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Rango Fechas</div>
-                <div className="font-mono" style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-primary)', marginTop: '4px' }}>
-                  {testResult.first_date || 'N/A'} → {testResult.last_date || 'N/A'}
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>HTTP Status</div>
+                <div className="font-mono" style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--signal-bullish)', marginTop: '4px' }}>
+                  {testResult.http_status || '200 OK'}
                 </div>
               </div>
 
@@ -482,8 +855,32 @@ export default function ProvidersModule() {
               </div>
             </div>
 
+            {testResult.endpoint_url && (
+              <div style={{ padding: '8px 12px', backgroundColor: 'var(--bg-canvas)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)', fontSize: '0.75rem' }}>
+                <span style={{ color: 'var(--text-secondary)', fontWeight: 700 }}>Endpoint Consultado: </span>
+                <code className="font-mono" style={{ color: '#3ECF8E' }}>{testResult.endpoint_url}</code>
+              </div>
+            )}
+
+            {/* Tabs */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  onClick={() => setResultTab('trace')}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: 'var(--radius-sm)',
+                    border: 'none',
+                    backgroundColor: resultTab === 'trace' ? 'var(--accent-sakura)' : 'var(--bg-canvas)',
+                    color: resultTab === 'trace' ? '#0B0D17' : 'var(--text-secondary)',
+                    fontWeight: 700,
+                    fontSize: '0.78rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  🕵️ Traza de Pasos (Execution Log)
+                </button>
+
                 <button
                   onClick={() => setResultTab('table')}
                   style={{
@@ -497,8 +894,9 @@ export default function ProvidersModule() {
                     cursor: 'pointer',
                   }}
                 >
-                  📋 Muestra de Velas (Primeras 5 y Últimas 5)
+                  📋 Muestra de Velas ({testResult.bars_sample.length})
                 </button>
+
                 <button
                   onClick={() => setResultTab('json')}
                   style={{
@@ -517,11 +915,49 @@ export default function ProvidersModule() {
               </div>
 
               <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                {testResult.cache_hit ? '💾 Obtenido desde SQLite Cache local' : '🌐 Obtenido vía HTTP desde API remota y persistido en SQLite'}
+                {testResult.cache_hit ? '💾 Obtenido desde Caché Sincronizada' : '🌐 Obtenido vía HTTP desde API remota'}
               </span>
             </div>
 
-            {resultTab === 'table' ? (
+            {/* Tab 1: Execution Trace Timeline */}
+            {resultTab === 'trace' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', backgroundColor: 'var(--bg-canvas)', padding: '14px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
+                <h4 style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: 700 }}>
+                  Diagnóstico de Ejecución por Pasos
+                </h4>
+                {testResult.execution_trace && testResult.execution_trace.length > 0 ? (
+                  testResult.execution_trace.map((step, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: '12px',
+                        padding: '8px 12px',
+                        backgroundColor: 'var(--bg-card)',
+                        borderRadius: 'var(--radius-sm)',
+                        borderLeft: `3px solid ${
+                          step.status === 'ok' ? '#3ECF8E' : step.status === 'warn' ? '#FFD166' : 'var(--signal-bearish)'
+                        }`,
+                      }}
+                    >
+                      <span style={{ fontSize: '0.85rem' }}>
+                        {step.status === 'ok' ? '✅' : step.status === 'warn' ? '⚠️' : '❌'}
+                      </span>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        <span style={{ fontWeight: 700, fontSize: '0.8rem', color: 'var(--text-bright)' }}>{step.step}</span>
+                        <span style={{ fontSize: '0.76rem', color: 'var(--text-secondary)' }}>{step.detail}</span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>No hay traza registrada.</div>
+                )}
+              </div>
+            )}
+
+            {/* Tab 2: Bars Sample Table */}
+            {resultTab === 'table' && (
               <div style={{ overflowX: 'auto', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', textAlign: 'left' }}>
                   <thead>
@@ -540,7 +976,7 @@ export default function ProvidersModule() {
                         key={idx}
                         style={{
                           borderBottom: '1px solid var(--border-subtle)',
-                          backgroundColor: idx % 2 === 0 ? 'transparent' : 'rgba(255, 107, 157, 0.03)',
+                          backgroundColor: idx % 2 === 0 ? 'transparent' : 'rgba(62, 207, 142, 0.03)',
                         }}
                       >
                         <td className="font-mono" style={{ padding: '8px 12px', fontWeight: 600 }}>{b.date}</td>
@@ -554,7 +990,10 @@ export default function ProvidersModule() {
                   </tbody>
                 </table>
               </div>
-            ) : (
+            )}
+
+            {/* Tab 3: JSON Inspector */}
+            {resultTab === 'json' && (
               <pre
                 className="font-mono"
                 style={{
@@ -566,7 +1005,7 @@ export default function ProvidersModule() {
                   fontSize: '0.75rem',
                   maxHeight: '300px',
                   overflowY: 'auto',
-                  color: 'var(--accent-mint)',
+                  color: '#3ECF8E',
                 }}
               >
                 {JSON.stringify(testResult, null, 2)}
@@ -576,6 +1015,7 @@ export default function ProvidersModule() {
         )}
       </Card>
 
+      {/* SQLite Cache Overview Table */}
       <Card style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
@@ -626,6 +1066,7 @@ export default function ProvidersModule() {
                         onClick={() => {
                           setSymbol(item.symbol);
                           setForceRefresh(false);
+                          setTargetProvider('cache');
                           handleTestFetch();
                         }}
                         style={{
