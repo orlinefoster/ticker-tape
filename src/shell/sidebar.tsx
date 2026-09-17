@@ -9,6 +9,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { route: '/', label: 'Dashboard', icon: '📊' },
+  { route: '/top-down', label: 'Top-Down Engine', icon: '🎯' },
   { route: '/cartera', label: 'Cartera Binance', icon: '⚡' },
   { route: '/cartera-iol', label: 'Cartera IOL', icon: '🇦🇷' },
   { route: '/portfolio', label: 'Portfolio Multi', icon: '💼' },

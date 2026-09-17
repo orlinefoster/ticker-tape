@@ -14,6 +14,7 @@ import CarteraIOLModule from '@/modules/cartera_iol';
 import MonitorModule from '@/modules/monitor';
 import MarketChartModule from '@/modules/chart';
 import ProvidersModule from '@/modules/providers';
+import TopDownModule from '@/modules/top_down';
 import { ErrorBoundary } from '@/lib/errorBoundary';
 import './styles.css';
 
@@ -24,6 +25,7 @@ interface ModuleEntry {
 
 const modules: Record<string, ModuleEntry> = {
   '/': { name: 'Dashboard', component: <Dashboard /> },
+  '/top-down': { name: 'Top-Down Engine', component: <TopDownModule /> },
   '/chart': { name: 'Gráfico de Mercado', component: <MarketChartModule /> },
   '/cartera': { name: 'Cartera Binance', component: <CarteraModule /> },
   '/cartera-iol': { name: 'Cartera IOL', component: <CarteraIOLModule /> },
