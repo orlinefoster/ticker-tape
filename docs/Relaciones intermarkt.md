@@ -1,0 +1,17 @@
+- La acción dentro del grupo de commodities
+	- A∈C
+- La acción entre grupos de commodities relacionados
+	- AC1​↔AC2​
+- El índice CRB y los distintos grupos de commodities y mercados(A, C, M, B)
+	- CRB=f(A,C,M,B)
+- Inversa entre commodities y bonos
+	- C∝1B​
+- Relación positiva entre bonos y acciones
+	- B∝A
+- Relación inversa entre el dólar y los distintos mercados de commodities (en particular el oro).
+	- D∝1Coro​
+- Entre distintos mercados de futuros y los grupos de acciones relacionados
+	- F↔A
+- Los mercados de bonos y acciones de USA y los internacionales
+	- (BUSA​,AUSA​)↔(BINT,AINT)
+

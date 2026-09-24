@@ -1,98 +1,103 @@
 :root {
-  /* ── Retrofuturistic Dark Kawaii Matrix (Cyber-Sakura Noir) ── */
+  /* ── Institutional Terminal Matrix (Bloomberg / NinjaTrader Dark Slate) ── */
   
   /* Canvas & Surfaces */
-  --bg-canvas: #0B0D17;
-  --bg-surface: #121526;
-  --bg-surface-card: #191D32;
-  --bg-surface-card-hover: #212642;
-  --bg-surface-glass: rgba(25, 29, 50, 0.75);
-  --bg-surface-overlay: rgba(11, 13, 23, 0.85);
+  --bg-canvas: #0A0C10;
+  --bg-surface: #11141D;
+  --bg-surface-card: #161A26;
+  --bg-surface-card-hover: #1E2333;
+  --bg-surface-glass: rgba(22, 26, 38, 0.88);
+  --bg-surface-overlay: rgba(10, 12, 16, 0.85);
 
   /* Legacy Compatibility Mappings */
-  --bg-primary: #0B0D17;
-  --bg-secondary: #121526;
-  --bg-tertiary: #191D32;
+  --bg-primary: #0A0C10;
+  --bg-secondary: #11141D;
+  --bg-tertiary: #161A26;
   
   /* Typography */
-  --text-primary: #F0F3FF;
-  --text-secondary: #9DA5C5;
-  --text-muted: #656C8A;
-  --text-bright: #FFFFFF;
+  --text-primary: #E2E8F0;
+  --text-secondary: #94A3B8;
+  --text-muted: #64748B;
+  --text-bright: #F8FAFC;
 
-  /* Primary Cyber-Sakura Accents */
-  --accent-sakura: #FF6B9D;
-  --accent-sakura-hover: #FF85B3;
-  --accent-sakura-soft: #FFA3C1;
-  --accent-sakura-muted: rgba(255, 107, 157, 0.15);
-  --accent-sakura-glow: rgba(255, 107, 157, 0.35);
+  /* Primary Institutional Technical Accent (Clean Financial Blue) */
+  --accent: #3B82F6;
+  --accent-hover: #60A5FA;
+  --accent-soft: #93C5FD;
+  --accent-muted: rgba(59, 130, 246, 0.15);
+  --accent-glow: rgba(59, 130, 246, 0.25);
 
-  /* Secondary Cyber-Kawaii Accents */
-  --accent-lavender: #B388FF;
-  --accent-lavender-hover: #C9A7FF;
-  --accent-lavender-muted: rgba(179, 136, 255, 0.15);
+  /* Legacy Color Compatibility (Cleaned up from Kawaii to Institutional) */
+  --accent-sakura: #3B82F6;
+  --accent-sakura-hover: #60A5FA;
+  --accent-sakura-soft: #93C5FD;
+  --accent-sakura-muted: rgba(59, 130, 246, 0.15);
+  --accent-sakura-glow: rgba(59, 130, 246, 0.25);
 
-  --accent-mint: #00F5D4;
-  --accent-mint-hover: #5CFFE7;
-  --accent-mint-muted: rgba(0, 245, 212, 0.15);
+  --accent-lavender: #818CF8;
+  --accent-lavender-hover: #A5B4FC;
+  --accent-lavender-muted: rgba(129, 140, 248, 0.15);
 
-  --accent-peach: #FFE082;
-  --accent-peach-hover: #FFECB3;
+  --accent-mint: #10B981;
+  --accent-mint-hover: #34D399;
+  --accent-mint-muted: rgba(16, 185, 129, 0.15);
 
-  /* Iridescent / Holographic Sheen (Tornasolado) Matrix */
-  --holo-gradient: linear-gradient(135deg, #FF6B9D 0%, #B388FF 28%, #00E5FF 55%, #00F5D4 78%, #FFE082 100%);
-  --holo-gradient-subtle: linear-gradient(135deg, rgba(255, 107, 157, 0.16) 0%, rgba(179, 136, 255, 0.14) 28%, rgba(0, 229, 255, 0.12) 55%, rgba(0, 245, 212, 0.14) 78%, rgba(255, 224, 130, 0.16) 100%);
-  --holo-border: linear-gradient(135deg, rgba(255, 107, 157, 0.45) 0%, rgba(179, 136, 255, 0.4) 30%, rgba(0, 229, 255, 0.38) 65%, rgba(0, 245, 212, 0.45) 100%);
-  --holo-glow: 0 0 18px rgba(255, 107, 157, 0.2), 0 0 32px rgba(0, 229, 255, 0.15);
+  --accent-peach: #F59E0B;
+  --accent-peach-hover: #FBBF24;
 
-  /* Global Accent (Defaulted to Sakura Pink) */
-  --accent: #FF6B9D;
-  --accent-hover: #FF85B3;
+  /* Subtle Technical Gradients (No Rainbow Holo) */
+  --holo-gradient: linear-gradient(135deg, #1E293B 0%, #0F172A 100%);
+  --holo-gradient-subtle: linear-gradient(135deg, rgba(30, 41, 59, 0.6) 0%, rgba(15, 23, 42, 0.8) 100%);
+  --holo-border: linear-gradient(135deg, rgba(59, 130, 246, 0.3) 0%, rgba(30, 41, 59, 0.4) 100%);
+  --holo-glow: 0 4px 16px rgba(0, 0, 0, 0.4);
 
   /* Trading & Financial Signal Matrix */
-  --signal-bullish: #00F5A0;
-  --signal-bullish-muted: rgba(0, 245, 160, 0.15);
-  --signal-bearish: #FF3366;
-  --signal-bearish-muted: rgba(255, 51, 102, 0.15);
-  --signal-neutral: #8C93B5;
+  --signal-bullish: #10B981;
+  --signal-bullish-muted: rgba(16, 185, 129, 0.15);
+  --signal-bearish: #EF4444;
+  --signal-bearish-muted: rgba(239, 68, 68, 0.15);
+  --signal-warning: #F59E0B;
+  --signal-warning-muted: rgba(245, 158, 11, 0.15);
+  --signal-neutral: #64748B;
 
   /* Borders & Dividers */
-  --border: rgba(255, 107, 157, 0.18);
-  --border-subtle: rgba(255, 107, 157, 0.12);
-  --border-focus: #FF6B9D;
-  --border-mint: rgba(0, 245, 212, 0.3);
+  --border: #232838;
+  --border-subtle: #191D2B;
+  --border-focus: #3B82F6;
+  --border-mint: rgba(16, 185, 129, 0.3);
 
-  /* Layout Spacing & Geometry */
-  --sidebar-width: 250px;
-  --sidebar-collapsed-width: 68px;
-  --radius-sm: 6px;
-  --radius: 10px;
-  --radius-lg: 14px;
+  /* Layout Spacing & Geometry (High density for 16:9 widescreen) */
+  --sidebar-width: 240px;
+  --sidebar-collapsed-width: 64px;
+  --radius-sm: 4px;
+  --radius: 6px;
+  --radius-lg: 8px;
   --radius-pill: 9999px;
 
-  /* Glows & Shadows */
-  --shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-  --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.35);
-  --glow-sakura: 0 0 16px rgba(255, 107, 157, 0.35);
-  --glow-mint: 0 0 16px rgba(0, 245, 212, 0.35);
-  --glow-lavender: 0 0 16px rgba(179, 136, 255, 0.35);
+  /* Shadows */
+  --shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  --shadow-card: 0 2px 10px rgba(0, 0, 0, 0.35);
+  --glow-sakura: 0 0 10px rgba(59, 130, 246, 0.2);
+  --glow-mint: 0 0 10px rgba(16, 185, 129, 0.2);
+  --glow-lavender: 0 0 10px rgba(129, 140, 248, 0.2);
 
   /* Animation & Transitions */
-  --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
-  --transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-fast: 0.1s ease;
+  --transition: 0.18s ease;
 }
 
 [data-theme='light'] {
-  --bg-canvas: #FAF7F9;
+  --bg-canvas: #F8FAFC;
   --bg-surface: #FFFFFF;
-  --bg-surface-card: #F2EEF5;
-  --bg-surface-card-hover: #E9E3EF;
-  --bg-primary: #FAF7F9;
+  --bg-surface-card: #F1F5F9;
+  --bg-surface-card-hover: #E2E8F0;
+  --bg-primary: #F8FAFC;
   --bg-secondary: #FFFFFF;
-  --bg-tertiary: #F2EEF5;
-  --text-primary: #1F1B2C;
-  --text-secondary: #6B627E;
-  --border: rgba(255, 107, 157, 0.25);
-  --border-subtle: rgba(255, 107, 157, 0.15);
+  --bg-tertiary: #F1F5F9;
+  --text-primary: #0F172A;
+  --text-secondary: #475569;
+  --text-muted: #94A3B8;
+  --text-bright: #020617;
+  --border: #CBD5E1;
+  --border-subtle: #E2E8F0;
 }
-

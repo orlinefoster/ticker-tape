@@ -7,20 +7,38 @@ interface NavItem {
   icon: string;
 }
 
-const navItems: NavItem[] = [
-  { route: '/', label: 'Dashboard', icon: '📊' },
-  { route: '/top-down', label: 'Top-Down Engine', icon: '🎯' },
-  { route: '/cartera', label: 'Cartera Binance', icon: '⚡' },
-  { route: '/cartera-iol', label: 'Cartera IOL', icon: '🇦🇷' },
-  { route: '/portfolio', label: 'Portfolio Multi', icon: '💼' },
-  { route: '/chart', label: 'Gráfico', icon: '📉' },
-  { route: '/providers', label: 'Proveedores', icon: '🔌' },
-  { route: '/intermarket', label: 'Intermarket', icon: '🔄' },
-  { route: '/topology', label: 'Topology', icon: '🔗' },
-  { route: '/relative-perf', label: 'Alpha Rotation', icon: '📡' },
-  { route: '/backtesting', label: 'Backtesting', icon: '📈' },
-  { route: '/elliott', label: 'Elliott Wave', icon: '🌊' },
-  { route: '/monitor', label: 'Monitor', icon: '👁️' },
+interface NavGroup {
+  title: string;
+  items: NavItem[];
+}
+
+const navGroups: NavGroup[] = [
+  {
+    title: 'Visión General',
+    items: [
+      { route: '/', label: 'Torre de Control', icon: '📊' },
+      { route: '/portfolio', label: 'Carteras & Patrimonio', icon: '💼' },
+    ],
+  },
+  {
+    title: 'Inteligencia de Mercado',
+    items: [
+      { route: '/top-down', label: 'Top-Down Engine', icon: '🎯' },
+      { route: '/chart', label: 'Gráfico Técnico', icon: '📉' },
+      { route: '/intermarket', label: 'Ciclo Intermarket', icon: '🔄' },
+      { route: '/topology', label: 'Topología & Regímenes', icon: '🔗' },
+      { route: '/relative-perf', label: 'Alpha Rotation', icon: '📡' },
+      { route: '/elliott', label: 'Elliott Wave', icon: '🌊' },
+    ],
+  },
+  {
+    title: 'Sistemas & Validación',
+    items: [
+      { route: '/backtesting', label: 'Backtesting', icon: '📈' },
+      { route: '/providers', label: 'Proveedores & Sync', icon: '🔌' },
+      { route: '/monitor', label: 'Monitor de Sistema', icon: '👁️' },
+    ],
+  },
 ];
 
 export function Sidebar() {
@@ -45,6 +63,8 @@ export function Sidebar() {
     setShowPicker(false);
   };
 
+  const allItems = navGroups.flatMap((g) => g.items);
+
   return (
     <aside
       className="sidebar"
@@ -55,108 +75,121 @@ export function Sidebar() {
         flexDirection: 'column',
         height: '100%',
         backgroundColor: 'var(--bg-surface)',
-        borderRight: '1px solid var(--border-subtle)',
+        borderRight: '1px solid var(--border)',
         transition: 'width var(--transition)',
         userSelect: 'none',
       }}
     >
-      {/* Upper Nav Section: Main Navigation */}
+      {/* Navigation Groups */}
       <nav
         className="sidebar-nav"
         style={{
-          padding: '16px 10px',
+          padding: '12px 6px',
           display: 'flex',
           flexDirection: 'column',
-          gap: '6px',
+          gap: '12px',
           overflowY: 'auto',
+          flex: 1,
         }}
       >
-        {navItems.map((item) => {
-          const isActive = activeContainerId === null && activeRoute === item.route;
-          return (
-            <button
-              key={item.route}
-              className={`sidebar-item${isActive ? ' active' : ''}`}
-              onClick={() => setActiveRoute(item.route)}
-              title={sidebarCollapsed ? item.label : undefined}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: sidebarCollapsed ? '0' : '12px',
-                width: '100%',
-                padding: sidebarCollapsed ? '12px 0' : '10px 14px',
-                border: isActive ? '1px solid rgba(255, 107, 157, 0.35)' : '1px solid transparent',
-                background: isActive
-                  ? 'linear-gradient(90deg, rgba(255, 107, 157, 0.22) 0%, rgba(179, 136, 255, 0.16) 35%, rgba(0, 229, 255, 0.12) 70%, rgba(0, 245, 212, 0.04) 100%)'
-                  : 'transparent',
-                color: isActive ? 'var(--text-bright)' : 'var(--text-secondary)',
-                cursor: 'pointer',
-                fontSize: '0.875rem',
-                borderRadius: 'var(--radius)',
-                justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
-                transition: 'all var(--transition-fast)',
-                fontWeight: isActive ? 700 : 500,
-                boxShadow: isActive ? 'var(--holo-glow)' : 'none',
-                position: 'relative',
-              }}
-            >
-              {isActive && (
-                <div
+        {navGroups.map((group) => (
+          <div key={group.title} style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            {!sidebarCollapsed && (
+              <div
+                style={{
+                  padding: '4px 10px',
+                  fontSize: '0.65rem',
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.08em',
+                  color: 'var(--text-muted)',
+                  fontFamily: 'monospace',
+                }}
+              >
+                {group.title}
+              </div>
+            )}
+
+            {group.items.map((item) => {
+              const isActive = activeContainerId === null && activeRoute === item.route;
+              return (
+                <button
+                  key={item.route}
+                  className={`sidebar-item${isActive ? ' active' : ''}`}
+                  onClick={() => setActiveRoute(item.route)}
+                  title={sidebarCollapsed ? item.label : undefined}
                   style={{
-                    position: 'absolute',
-                    left: '0',
-                    top: '15%',
-                    bottom: '15%',
-                    width: '3px',
-                    background: 'var(--holo-gradient)',
-                    borderRadius: '0 2px 2px 0',
-                    boxShadow: '0 0 10px rgba(0, 229, 255, 0.6)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: sidebarCollapsed ? '0' : '10px',
+                    width: '100%',
+                    padding: sidebarCollapsed ? '10px 0' : '7px 10px',
+                    border: 'none',
+                    borderLeft: isActive ? '3px solid var(--accent)' : '3px solid transparent',
+                    backgroundColor: isActive ? 'var(--bg-surface-card)' : 'transparent',
+                    color: isActive ? 'var(--text-bright)' : 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    fontSize: '0.8125rem',
+                    borderRadius: '0 var(--radius-sm) var(--radius-sm) 0',
+                    justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
+                    fontWeight: isActive ? 600 : 400,
+                    transition: 'all var(--transition-fast)',
+                    textAlign: 'left',
                   }}
-                />
-              )}
-              <span style={{ fontSize: '1.15rem', lineHeight: 1 }}>{item.icon}</span>
-              {!sidebarCollapsed && <span>{item.label}</span>}
-            </button>
-          );
-        })}
+                  onMouseEnter={(e) => {
+                    if (!isActive) e.currentTarget.style.backgroundColor = 'var(--bg-surface-card-hover)';
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isActive) e.currentTarget.style.backgroundColor = 'transparent';
+                  }}
+                >
+                  <span style={{ fontSize: '1rem', lineHeight: 1 }}>{item.icon}</span>
+                  {!sidebarCollapsed && <span>{item.label}</span>}
+                </button>
+              );
+            })}
+          </div>
+        ))}
       </nav>
 
       {/* Divider */}
-      <div style={{ margin: '8px 14px', borderTop: '1px solid var(--border-subtle)' }} />
+      <div style={{ margin: '4px 10px', borderTop: '1px solid var(--border-subtle)' }} />
 
-      {/* Lower Nav Section: Custom Saved Views & Dynamic Multi-Window slots */}
+      {/* Lower Nav Section: Custom Saved Views */}
       <div
         style={{
-          padding: '8px',
+          padding: '6px 8px',
           display: 'flex',
           flexDirection: 'column',
-          gap: '6px',
+          gap: '4px',
           position: 'relative',
         }}
       >
         {!sidebarCollapsed && (
           <div
             style={{
-              padding: '0 8px 4px',
-              fontSize: '0.6875rem',
+              padding: '2px 6px',
+              fontSize: '0.625rem',
               fontWeight: 700,
-              color: 'var(--text-secondary)',
+              color: 'var(--text-muted)',
               textTransform: 'uppercase',
-              letterSpacing: '0.05em',
+              letterSpacing: '0.06em',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
+              fontFamily: 'monospace',
             }}
           >
-            <span>Vistas Guardadas</span>
+            <span>Vistas 16:9</span>
             {containers.length > 0 && (
               <span
                 style={{
-                  fontSize: '0.625rem',
+                  fontSize: '0.6rem',
                   padding: '1px 5px',
-                  borderRadius: '10px',
-                  background: 'rgba(255, 107, 157, 0.2)',
+                  borderRadius: '2px',
+                  backgroundColor: 'var(--bg-surface-card)',
                   color: 'var(--accent)',
+                  border: '1px solid var(--border)',
                 }}
               >
                 {containers.length}
@@ -165,32 +198,42 @@ export function Sidebar() {
           </div>
         )}
 
-        {/* Action Button: "💻 +" */}
+        {/* Action Button: "+ Nueva Vista" */}
         <button
           onClick={() => setShowPicker(!showPicker)}
-          title="Guardar nueva vista personalizada (+)"
+          title="Guardar nueva pestaña modular (+)"
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: sidebarCollapsed ? '0' : '8px',
+            gap: sidebarCollapsed ? '0' : '6px',
             width: '100%',
-            padding: sidebarCollapsed ? '10px 0' : '8px 12px',
-            border: '1px dashed var(--accent)',
-            background: showPicker ? 'rgba(255, 107, 157, 0.12)' : 'transparent',
-            color: 'var(--accent)',
+            padding: sidebarCollapsed ? '8px 0' : '5px 8px',
+            border: '1px dashed var(--border)',
+            background: showPicker ? 'var(--bg-surface-card)' : 'transparent',
+            color: 'var(--text-secondary)',
             cursor: 'pointer',
-            fontSize: '0.8125rem',
-            borderRadius: 'var(--radius)',
+            fontSize: '0.75rem',
+            borderRadius: 'var(--radius-sm)',
             justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
-            fontWeight: 600,
+            fontWeight: 500,
             transition: 'all var(--transition-fast)',
           }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.borderColor = 'var(--accent)';
+            e.currentTarget.style.color = 'var(--text-primary)';
+          }}
+          onMouseLeave={(e) => {
+            if (!showPicker) {
+              e.currentTarget.style.borderColor = 'var(--border)';
+              e.currentTarget.style.color = 'var(--text-secondary)';
+            }
+          }}
         >
-          <span style={{ fontSize: '1rem' }}>✨ +</span>
-          {!sidebarCollapsed && <span>Nueva Vista</span>}
+          <span style={{ fontSize: '0.85rem' }}>+</span>
+          {!sidebarCollapsed && <span>Pestaña Modular</span>}
         </button>
 
-        {/* Dropdown / Span popup picker */}
+        {/* Dropdown popup picker */}
         {showPicker && (
           <div
             style={{
@@ -198,32 +241,34 @@ export function Sidebar() {
               bottom: '100%',
               left: '8px',
               right: '8px',
-              backgroundColor: 'var(--bg-surface)',
+              backgroundColor: 'var(--bg-surface-card)',
               border: '1px solid var(--border)',
-              borderRadius: 'var(--radius)',
-              boxShadow: '0 12px 32px rgba(0,0,0,0.5)',
-              padding: '8px',
+              borderRadius: 'var(--radius-sm)',
+              boxShadow: 'var(--shadow)',
+              padding: '6px',
               zIndex: 100,
               display: 'flex',
               flexDirection: 'column',
-              gap: '4px',
-              maxHeight: '240px',
+              gap: '2px',
+              maxHeight: '220px',
               overflowY: 'auto',
             }}
           >
             <div
               style={{
-                fontSize: '0.75rem',
+                fontSize: '0.68rem',
                 fontWeight: 700,
-                color: 'var(--text-bright)',
-                padding: '4px 6px',
+                color: 'var(--text-muted)',
+                padding: '3px 6px',
                 borderBottom: '1px solid var(--border-subtle)',
-                marginBottom: '4px',
+                marginBottom: '2px',
+                fontFamily: 'monospace',
+                textTransform: 'uppercase',
               }}
             >
-              Elegir Módulo Base:
+              Seleccionar Módulo:
             </div>
-            {navItems.map((mod) => (
+            {allItems.map((mod) => (
               <button
                 key={mod.route}
                 onClick={() => handleCreateContainer(mod.route, mod.label, mod.icon)}
@@ -231,17 +276,17 @@ export function Sidebar() {
                   display: 'flex',
                   alignItems: 'center',
                   gap: '8px',
-                  padding: '6px 8px',
+                  padding: '5px 6px',
                   border: 'none',
                   backgroundColor: 'transparent',
                   color: 'var(--text-primary)',
-                  fontSize: '0.8125rem',
+                  fontSize: '0.78rem',
                   cursor: 'pointer',
-                  borderRadius: '4px',
+                  borderRadius: '3px',
                   textAlign: 'left',
-                  transition: 'background-color 0.15s ease',
+                  transition: 'background-color var(--transition-fast)',
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'rgba(255, 107, 157, 0.15)')}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--bg-surface-card-hover)')}
                 onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
               >
                 <span>{mod.icon}</span>
@@ -252,7 +297,7 @@ export function Sidebar() {
         )}
 
         {/* Active Container Slots */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '200px', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', maxHeight: '150px', overflowY: 'auto' }}>
           {containers.map((c) => {
             const isActive = activeContainerId === c.id;
             return (
@@ -261,42 +306,25 @@ export function Sidebar() {
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: sidebarCollapsed ? '0' : '8px',
-                  padding: sidebarCollapsed ? '8px 0' : '7px 10px',
-                  borderRadius: 'var(--radius)',
-                  backgroundColor: isActive
-                    ? 'linear-gradient(90deg, rgba(255, 107, 157, 0.2) 0%, rgba(179, 136, 255, 0.15) 100%)'
-                    : 'transparent',
-                  border: isActive ? '1px solid rgba(255, 107, 157, 0.4)' : '1px solid transparent',
+                  gap: sidebarCollapsed ? '0' : '6px',
+                  padding: sidebarCollapsed ? '6px 0' : '4px 8px',
+                  borderRadius: 'var(--radius-sm)',
+                  backgroundColor: isActive ? 'var(--bg-surface-card)' : 'transparent',
+                  borderLeft: isActive ? '3px solid var(--accent)' : '3px solid transparent',
                   cursor: 'pointer',
                   justifyContent: sidebarCollapsed ? 'center' : 'space-between',
-                  boxShadow: isActive ? 'var(--holo-glow)' : 'none',
-                  position: 'relative',
                   transition: 'all var(--transition-fast)',
                 }}
                 onClick={() => setActiveContainer(c.id)}
                 title={c.name}
               >
-                {isActive && (
-                  <div
-                    style={{
-                      position: 'absolute',
-                      left: '0',
-                      top: '15%',
-                      bottom: '15%',
-                      width: '3px',
-                      background: 'var(--holo-gradient)',
-                      borderRadius: '0 2px 2px 0',
-                    }}
-                  />
-                )}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
-                  <span style={{ fontSize: '1rem' }}>{c.icon}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
+                  <span style={{ fontSize: '0.9rem' }}>{c.icon}</span>
                   {!sidebarCollapsed && (
                     <span
                       style={{
-                        fontSize: '0.8125rem',
-                        fontWeight: isActive ? 700 : 500,
+                        fontSize: '0.75rem',
+                        fontWeight: isActive ? 600 : 400,
                         color: isActive ? 'var(--text-bright)' : 'var(--text-secondary)',
                         whiteSpace: 'nowrap',
                         textOverflow: 'ellipsis',
@@ -315,17 +343,17 @@ export function Sidebar() {
                       e.stopPropagation();
                       removeContainer(c.id);
                     }}
-                    title="Eliminar vista personalizada"
+                    title="Cerrar vista"
                     style={{
                       border: 'none',
                       background: 'transparent',
                       color: 'var(--text-muted)',
                       cursor: 'pointer',
-                      fontSize: '0.75rem',
-                      padding: '2px 4px',
-                      borderRadius: '3px',
+                      fontSize: '0.7rem',
+                      padding: '1px 3px',
+                      borderRadius: '2px',
                     }}
-                    onMouseEnter={(e) => (e.currentTarget.style.color = '#FF5252')}
+                    onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--signal-bearish)')}
                     onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
                   >
                     ✕
@@ -342,29 +370,31 @@ export function Sidebar() {
         className="sidebar-footer"
         style={{
           marginTop: 'auto',
-          padding: '12px',
+          padding: '8px 10px',
           borderTop: '1px solid var(--border)',
         }}
       >
         <button
           onClick={toggleSidebar}
-          title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          title={sidebarCollapsed ? 'Expandir barra lateral' : 'Colapsar barra lateral'}
           style={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             width: '100%',
-            padding: '8px',
+            padding: '6px',
             border: 'none',
             background: 'transparent',
-            color: 'var(--text-secondary)',
+            color: 'var(--text-muted)',
             cursor: 'pointer',
-            fontSize: '1.125rem',
-            borderRadius: 'var(--radius)',
-            transition: 'color var(--transition)',
+            fontSize: '1rem',
+            borderRadius: 'var(--radius-sm)',
+            transition: 'color var(--transition-fast)',
           }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-bright)')}
+          onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
         >
-          {sidebarCollapsed ? '→' : '←'}
+          {sidebarCollapsed ? '▶' : '◀'}
         </button>
       </div>
     </aside>

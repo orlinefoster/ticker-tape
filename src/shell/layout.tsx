@@ -9,8 +9,6 @@ import ElliottWaveModule from '@/modules/elliott_wave';
 import RelativePerfModule from '@/modules/relative_perf';
 import BacktestingModule from '@/modules/backtesting';
 import PortfolioModule from '@/modules/portfolio';
-import CarteraModule from '@/modules/cartera';
-import CarteraIOLModule from '@/modules/cartera_iol';
 import MonitorModule from '@/modules/monitor';
 import MarketChartModule from '@/modules/chart';
 import ProvidersModule from '@/modules/providers';
@@ -27,15 +25,15 @@ const modules: Record<string, ModuleEntry> = {
   '/': { name: 'Dashboard', component: <Dashboard /> },
   '/top-down': { name: 'Top-Down Engine', component: <TopDownModule /> },
   '/chart': { name: 'Gráfico de Mercado', component: <MarketChartModule /> },
-  '/cartera': { name: 'Cartera Binance', component: <CarteraModule /> },
-  '/cartera-iol': { name: 'Cartera IOL', component: <CarteraIOLModule /> },
+  '/cartera': { name: 'Carteras & Patrimonio', component: <PortfolioModule /> },
+  '/cartera-iol': { name: 'Carteras & Patrimonio', component: <PortfolioModule /> },
   '/providers': { name: 'Diagnóstico de Proveedores', component: <ProvidersModule /> },
   '/intermarket': { name: 'Intermarket', component: <IntermarketModule /> },
   '/topology': { name: 'Market Topology', component: <TopologyModule /> },
   '/relative-perf': { name: 'Alpha Rotation Radar', component: <RelativePerfModule /> },
   '/backtesting': { name: 'Backtesting Module', component: <BacktestingModule /> },
   '/elliott': { name: 'Elliott Wave', component: <ElliottWaveModule /> },
-  '/portfolio': { name: 'Portfolio Multi-Activos', component: <PortfolioModule /> },
+  '/portfolio': { name: 'Carteras & Patrimonio', component: <PortfolioModule /> },
   '/monitor': { name: 'Monitor', component: <MonitorModule /> },
 };
 
@@ -140,9 +138,9 @@ export function Shell() {
                 padding: '10px 18px',
                 marginBottom: '16px',
                 backgroundColor: 'var(--bg-surface)',
-                border: '1px solid rgba(255, 107, 157, 0.3)',
+                border: '1px solid var(--border)',
                 borderRadius: 'var(--radius)',
-                boxShadow: 'var(--holo-glow)',
+                boxShadow: 'var(--shadow-card)',
                 position: 'relative',
               }}
             >
@@ -199,7 +197,7 @@ export function Shell() {
                             padding: '4px',
                             borderRadius: '4px',
                           }}
-                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'rgba(255,107,157,0.2)')}
+                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--bg-surface-card-hover)')}
                           onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
                         >
                           {ico}
@@ -238,7 +236,7 @@ export function Shell() {
                         padding: '4px 8px',
                         borderRadius: '4px',
                         backgroundColor: 'var(--accent)',
-                        color: '#0B0D17',
+                        color: '#FFFFFF',
                         border: 'none',
                         fontSize: '0.75rem',
                         fontWeight: 700,
@@ -281,7 +279,7 @@ export function Shell() {
                         fontSize: '0.6875rem',
                         padding: '2px 6px',
                         borderRadius: '4px',
-                        background: 'rgba(255, 107, 157, 0.15)',
+                        background: 'var(--accent-muted)',
                         color: 'var(--accent)',
                         fontWeight: 600,
                       }}

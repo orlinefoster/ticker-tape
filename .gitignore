@@ -40,8 +40,5 @@ logs/
 *.db-shm
 data/
 
-# Docs
-docs/
-
 # Shortcuts
 *.lnk

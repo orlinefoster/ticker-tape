@@ -1,0 +1,10 @@
+- La vinculación entre el mercado de commodities y el de bonos es fundamental.
+	- Estos se relacionan inversamente.
+	- Es la vinculación clave que ata los 4 sectores
+- La clave es la inflación
+	- Las commodities son un indicador adelantado de la inflación.
+	- Anticipan el comportamiento de los índices de inflación por varios meses.
+	- Los precios subiendo son inflacionarios.
+	- Los precios cayendo son no-inflacionarios.
+- Los períodos de inflación se caracterizan también por tasas de interés en suba, mientras que en los periodos no inflacionarios tiene tasas de interés en baja.
+- Las commodities tienen una tendencia en la misma dirección que las tasas de interés de los bonos y en dirección opuesta a los precios de los bonos.

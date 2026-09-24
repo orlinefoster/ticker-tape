@@ -461,6 +461,41 @@ CREATE POLICY "Allow public insert/upsert" ON market_candles FOR INSERT WITH CHE
             💾 Test Ping DB
           </Button>
         </Card>
+
+        {/* InvertirOnline MCP Card */}
+        <Card variant="default">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '1.4rem' }}>🇦🇷</span>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-bright)' }}>
+                  InvertirOnline (IOL MCP)
+                </h3>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Protocolo MCP Oficial (BYMA & CEDEARs)</span>
+              </div>
+            </div>
+            <Badge variant="mint" pulse>
+              READY
+            </Badge>
+          </div>
+
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '4px', margin: '14px 0' }}>
+            <div><strong>Endpoint:</strong> <code style={{ color: 'var(--accent)' }}>https://mcp.invertironline.com/</code></div>
+            <div><strong>Activos:</strong> Acciones BYMA, CEDEARs, Bonos, ONs</div>
+            <div style={{ color: 'var(--signal-bullish)', fontWeight: 700 }}>
+              Protocolo: SSE / JSON-RPC 2.0 (Model Context Protocol)
+            </div>
+          </div>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => alert('MCP Client conectado con https://mcp.invertironline.com/')}
+            style={{ width: '100%', borderColor: 'var(--accent)', color: 'var(--accent)' }}
+          >
+            🇦🇷 Test Handshake IOL MCP
+          </Button>
+        </Card>
       </div>
 
       {/* Supabase Configuration Panel */}

@@ -1,417 +1,938 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { usePortfolioStore } from '@/store/portfolioStore';
 import { useUIStore } from '@/store/uiStore';
-import { commands, type OHLCVBar } from '@/lib/tauri';
-import { FinancialChart } from '@/components/FinancialChart';
-import { StatCard } from '@/components/StatCard';
-import type { CandlestickData, Time } from 'lightweight-charts';
+import { calculatePositionSize, type PositionSizeResult } from '@/lib/vanTharp';
+
+interface MarketSignal {
+  symbol: string;
+  name: string;
+  source: string;
+  direction: 'BUY' | 'SELL' | 'NEUTRAL';
+  score: number; // 0 to 100
+  timeframe: string;
+  rationale: string;
+  suggestedEntry: number;
+  suggestedStop: number;
+  suggestedTarget: number;
+  targetPortfolio: 'iol' | 'binance';
+}
+
+const ACTIVE_SIGNALS: MarketSignal[] = [
+  {
+    symbol: 'SPY',
+    name: 'S&P 500 ETF (CEDEAR)',
+    source: 'Top-Down Macro',
+    direction: 'BUY',
+    score: 86,
+    timeframe: 'Daily / 1W',
+    rationale: 'Régimen de expansión macro y momentum sectorial favorable.',
+    suggestedEntry: 560.0,
+    suggestedStop: 535.0,
+    suggestedTarget: 610.0,
+    targetPortfolio: 'iol',
+  },
+  {
+    symbol: 'BTC',
+    name: 'Bitcoin Spot (Binance)',
+    source: 'Alpha Rotation Radar',
+    direction: 'BUY',
+    score: 91,
+    timeframe: 'Daily',
+    rationale: 'Rotación de capital hacia activos de reserva con quiebre de rango.',
+    suggestedEntry: 67250.0,
+    suggestedStop: 63500.0,
+    suggestedTarget: 75000.0,
+    targetPortfolio: 'binance',
+  },
+  {
+    symbol: 'GGAL',
+    name: 'Grupo Fin. Galicia (BYMA)',
+    source: 'Intermarket Cycle',
+    direction: 'BUY',
+    score: 78,
+    timeframe: 'Daily',
+    rationale: 'Baja del riesgo país y volumen comprador en sector financiero local.',
+    suggestedEntry: 4750.0,
+    suggestedStop: 4420.0,
+    suggestedTarget: 5410.0,
+    targetPortfolio: 'iol',
+  },
+  {
+    symbol: 'AAPL',
+    name: 'Apple Inc. (CEDEAR)',
+    source: 'Topology Regimes',
+    direction: 'NEUTRAL',
+    score: 54,
+    timeframe: 'Daily',
+    rationale: 'Consolidación lateral en resistencia histórica.',
+    suggestedEntry: 230.0,
+    suggestedStop: 218.0,
+    suggestedTarget: 254.0,
+    targetPortfolio: 'iol',
+  },
+];
 
 export function Dashboard() {
   const { setActiveRoute } = useUIStore();
-  const [selectedSymbol, setSelectedSymbol] = useState('SPY');
-  const [bars, setBars] = useState<OHLCVBar[]>([]);
-  const [loadingBars, setLoadingBars] = useState(false);
+  const {
+    rates,
+    cashHoldings,
+    iolHoldings,
+    binanceHoldings,
+    equityHistory,
+    alerts,
+    dismissAlert,
+    getCashValuationUsd,
+    getIOLValuationUsd,
+    getBinanceValuationUsd,
+    getTotalNetWorthUsd,
+    addTransaction,
+    addIOLHolding,
+    addBinanceHolding,
+  } = usePortfolioStore();
 
-  // Ollama AI Analysis State
-  const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiError, setAiError] = useState<string | null>(null);
+  const cashUsd = getCashValuationUsd();
+  const iolUsd = getIOLValuationUsd();
+  const binanceUsd = getBinanceValuationUsd();
+  const totalNetWorthUsd = getTotalNetWorthUsd();
+  const totalNetWorthArs = totalNetWorthUsd * rates.ccl;
 
-  // Quick Action feedback
-  const [actionFeedback, setActionFeedback] = useState<string | null>(null);
+  const [equityTimeframe, setEquityTimeframe] = useState<'3M' | '6M' | 'YTD' | 'ALL'>('YTD');
 
-  useEffect(() => {
-    loadSymbolData(selectedSymbol);
-  }, [selectedSymbol]);
+  // Van Tharp Calculator Modal State
+  const [selectedSignalForSizing, setSelectedSignalForSizing] = useState<MarketSignal | null>(null);
+  const [riskPct, setRiskPct] = useState<number>(1.0); // 1% default 1R risk
+  const [customEntry, setCustomEntry] = useState<number>(0);
+  const [customStop, setCustomStop] = useState<number>(0);
+  const [customTarget, setCustomTarget] = useState<number>(0);
+  const [sizingSuccessMsg, setSizingSuccessMsg] = useState<string | null>(null);
 
-  const loadSymbolData = async (sym: string) => {
-    setLoadingBars(true);
-    try {
-      const data = await commands.fetchMarketData(sym, '1y');
-      setBars(data || []);
-    } catch (err) {
-      console.warn('Dashboard data fetch warning:', err);
-    } finally {
-      setLoadingBars(false);
-    }
+  // Allocation percentages
+  const pctCash = totalNetWorthUsd > 0 ? (cashUsd / totalNetWorthUsd) * 100 : 0;
+  const pctIol = totalNetWorthUsd > 0 ? (iolUsd / totalNetWorthUsd) * 100 : 0;
+  const pctBinance = totalNetWorthUsd > 0 ? (binanceUsd / totalNetWorthUsd) * 100 : 0;
+
+  // Currency exposure
+  const totalArsNominal =
+    cashHoldings.filter((h) => h.currency === 'ARS').reduce((sum, h) => sum + h.amount, 0) +
+    iolHoldings.filter((h) => h.currencyExposure === 'ARS').reduce((sum, h) => sum + h.nominalQuantity * h.currentPriceArs, 0);
+  const pctArs = totalNetWorthUsd > 0 ? ((totalArsNominal / rates.ccl) / totalNetWorthUsd) * 100 : 0;
+  const pctUsd = totalNetWorthUsd > 0 ? (100 - pctArs - pctBinance) : 0;
+
+  // Simple SVG sparkline / equity curve calculator
+  const minEquity = Math.min(...equityHistory.map((e) => e.totalUsd)) * 0.96;
+  const maxEquity = Math.max(...equityHistory.map((e) => e.totalUsd)) * 1.04;
+  const range = maxEquity - minEquity || 1;
+
+  const svgWidth = 640;
+  const svgHeight = 180;
+  const paddingX = 40;
+  const paddingY = 25;
+
+  const points = equityHistory.map((pt, idx) => {
+    const x = paddingX + (idx / (equityHistory.length - 1)) * (svgWidth - paddingX * 2);
+    const y = svgHeight - paddingY - ((pt.totalUsd - minEquity) / range) * (svgHeight - paddingY * 2);
+    return { x, y, pt };
+  });
+
+  const pathD = points.reduce((acc, p, idx) => `${acc} ${idx === 0 ? 'M' : 'L'} ${p.x} ${p.y}`, '');
+  const areaD = `${pathD} L ${points[points.length - 1].x} ${svgHeight - paddingY} L ${points[0].x} ${svgHeight - paddingY} Z`;
+
+  const handleOpenSizingModal = (sig: MarketSignal) => {
+    setSelectedSignalForSizing(sig);
+    setCustomEntry(sig.suggestedEntry);
+    setCustomStop(sig.suggestedStop);
+    setCustomTarget(sig.suggestedTarget);
+    setSizingSuccessMsg(null);
   };
 
-  const handleRunAiAnalysis = async () => {
-    setAiLoading(true);
-    setAiError(null);
-    try {
-      const analysis = await commands.analyzeMarketAI(selectedSymbol);
-      setAiAnalysis(analysis);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setAiError(msg || 'No se pudo conectar a Ollama. Asegúrate de tener Ollama ejecutándose en localhost:11434.');
-    } finally {
-      setAiLoading(false);
-    }
-  };
+  const sizingResult: PositionSizeResult | null = selectedSignalForSizing
+    ? calculatePositionSize({
+        totalEquity: totalNetWorthUsd,
+        riskPercentage: riskPct,
+        entryPrice: customEntry,
+        stopLossPrice: customStop,
+        targetPrice: customTarget,
+        assetType: selectedSignalForSizing.targetPortfolio === 'binance' ? 'CRIPTO' : 'CEDEAR',
+      })
+    : null;
 
-  const handleQuickAction = async (action: string) => {
-    setActionFeedback(null);
-    try {
-      if (action === 'greet') {
-        const res = await commands.greet('Trader');
-        setActionFeedback(`✅ ${res}`);
-      } else if (action === 'market-data') {
-        const bars = await commands.fetchMarketData(selectedSymbol, '1y');
-        setActionFeedback(`✅ ${bars.length} barras cargadas en caché para ${selectedSymbol}`);
-      } else if (action === 'strategy') {
-        const signals = await commands.runStrategy(selectedSymbol, 'ma-crossover', { fast: 50, slow: 200 });
-        setActionFeedback(`✅ Estrategia ejecutada: ${signals.length} señales generadas`);
-      } else if (action === 'backtest') {
-        setActiveRoute('/backtesting');
-      } else if (action === 'elliott') {
-        setActiveRoute('/elliott');
-      }
-    } catch (e) {
-      setActionFeedback(`⚠️ ${e instanceof Error ? e.message : String(e)}`);
-    }
-  };
+  const handleExecuteSizedOrder = () => {
+    if (!selectedSignalForSizing || !sizingResult || sizingResult.recommendedQuantity <= 0) return;
 
-  const chartData: CandlestickData<Time>[] = bars
-    .map((b) => ({
-      time: b.date as Time,
-      open: b.open,
-      high: b.high,
-      low: b.low,
-      close: b.close,
-    }))
-    .sort((a, b) => (a.time > b.time ? 1 : -1));
+    if (selectedSignalForSizing.targetPortfolio === 'binance') {
+      addBinanceHolding({
+        symbol: selectedSignalForSizing.symbol,
+        name: selectedSignalForSizing.name,
+        amount: sizingResult.recommendedQuantity,
+        avgBuyPriceUsdt: customEntry,
+        currentPriceUsdt: customEntry,
+      });
+      addTransaction({
+        portfolioType: 'binance',
+        type: 'COMPRA',
+        symbol: selectedSignalForSizing.symbol,
+        quantity: sizingResult.recommendedQuantity,
+        price: customEntry,
+        currency: 'USDT',
+        totalNominal: sizingResult.totalCapitalRequired,
+        notes: `Orden Van Tharp (${riskPct}% R): Stop en $${customStop}, Target en $${customTarget} (${sizingResult.rMultipleTarget || 0}R)`,
+      });
+    } else {
+      addIOLHolding({
+        symbol: selectedSignalForSizing.symbol,
+        name: selectedSignalForSizing.name,
+        assetType: selectedSignalForSizing.symbol === 'GGAL' ? 'ACCION_LOCAL' : 'CEDEAR',
+        nominalQuantity: sizingResult.recommendedQuantity,
+        avgBuyPriceArs: customEntry,
+        currentPriceArs: customEntry,
+        currencyExposure: selectedSignalForSizing.symbol === 'GGAL' ? 'ARS' : 'USD_CCL',
+      });
+      addTransaction({
+        portfolioType: 'iol',
+        type: 'COMPRA',
+        symbol: selectedSignalForSizing.symbol,
+        quantity: sizingResult.recommendedQuantity,
+        price: customEntry,
+        currency: 'ARS',
+        totalNominal: sizingResult.totalCapitalRequired,
+        notes: `Orden Van Tharp (${riskPct}% R): Stop en $${customStop}, Target en $${customTarget} (${sizingResult.rMultipleTarget || 0}R)`,
+      });
+    }
+
+    setSizingSuccessMsg(
+      `✅ Posición de ${sizingResult.recommendedQuantity} ${selectedSignalForSizing.symbol} registrada con éxito respetando 1R = $${sizingResult.totalRiskAmount.toFixed(0)} USD.`
+    );
+    setTimeout(() => {
+      setSelectedSignalForSizing(null);
+      setSizingSuccessMsg(null);
+    }, 2500);
+  };
 
   return (
-    <div className="dashboard" style={styles.container}>
-      {/* Header */}
-      <div style={styles.header}>
-        <div>
-          <h1 style={styles.title}>Panel Principal 🎞️</h1>
-          <p style={styles.subtitle}>
-            Visión global del mercado, motor cuantitativo e inteligencia artificial local
-          </p>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      {/* ── Top Institutional Ribbon (Net Worth & Capital Structure) ── */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1.2fr 1fr 1fr 1fr',
+          gap: '12px',
+          padding: '14px 18px',
+          backgroundColor: 'var(--bg-surface)',
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius)',
+        }}
+      >
+        {/* Net Worth */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: 'monospace' }}>
+            Patrimonio Neto Consolidado
+          </div>
+          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--text-bright)', fontFamily: 'monospace', lineHeight: 1.1 }}>
+            ${totalNetWorthUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 500 }}>USD</span>
+          </div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontFamily: 'monospace' }}>
+            ARS ${totalNetWorthArs.toLocaleString('es-AR', { maximumFractionDigits: 0 })} <span style={{ color: 'var(--text-muted)' }}>(CCL ${rates.ccl})</span>
+          </div>
         </div>
-        <div style={styles.statusBadge}>
-          <span style={{ fontSize: '0.75rem', lineHeight: 1 }}>🟢</span>
-          <span style={styles.statusText}>Sistema Operativo</span>
+
+        {/* 1. Cash Portfolio Metric */}
+        <div
+          onClick={() => setActiveRoute('/portfolio')}
+          style={{
+            padding: '8px 12px',
+            backgroundColor: 'var(--bg-surface-card)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-sm)',
+            cursor: 'pointer',
+            transition: 'border-color var(--transition-fast)',
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
+          onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>💵 DINERO / CASH</span>
+            <span style={{ fontSize: '0.68rem', color: 'var(--accent)', fontWeight: 700, fontFamily: 'monospace' }}>{pctCash.toFixed(1)}%</span>
+          </div>
+          <div style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--text-bright)', fontFamily: 'monospace', marginTop: '2px' }}>
+            ${cashUsd.toLocaleString('en-US', { maximumFractionDigits: 0 })}{' '}
+            <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>USD</span>
+          </div>
+          <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+            {cashHoldings.length} cuentas (Bancos, ARS/USD, Cauciones)
+          </div>
+        </div>
+
+        {/* 2. IOL Portfolio Metric */}
+        <div
+          onClick={() => setActiveRoute('/portfolio')}
+          style={{
+            padding: '8px 12px',
+            backgroundColor: 'var(--bg-surface-card)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-sm)',
+            cursor: 'pointer',
+            transition: 'border-color var(--transition-fast)',
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--signal-warning)')}
+          onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>🇦🇷 CARTERA IOL</span>
+            <span style={{ fontSize: '0.68rem', color: 'var(--signal-warning)', fontWeight: 700, fontFamily: 'monospace' }}>{pctIol.toFixed(1)}%</span>
+          </div>
+          <div style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--text-bright)', fontFamily: 'monospace', marginTop: '2px' }}>
+            ${iolUsd.toLocaleString('en-US', { maximumFractionDigits: 0 })}{' '}
+            <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>USD</span>
+          </div>
+          <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+            {iolHoldings.length} activos (BYMA, CEDEARs, Bonos)
+          </div>
+        </div>
+
+        {/* 3. Binance Crypto Metric */}
+        <div
+          onClick={() => setActiveRoute('/portfolio')}
+          style={{
+            padding: '8px 12px',
+            backgroundColor: 'var(--bg-surface-card)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-sm)',
+            cursor: 'pointer',
+            transition: 'border-color var(--transition-fast)',
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--signal-bullish)')}
+          onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>⚡ BINANCE CRIPTO</span>
+            <span style={{ fontSize: '0.68rem', color: 'var(--signal-bullish)', fontWeight: 700, fontFamily: 'monospace' }}>{pctBinance.toFixed(1)}%</span>
+          </div>
+          <div style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--text-bright)', fontFamily: 'monospace', marginTop: '2px' }}>
+            ${binanceUsd.toLocaleString('en-US', { maximumFractionDigits: 0 })}{' '}
+            <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>USDT</span>
+          </div>
+          <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+            {binanceHoldings.length} monedas (BTC, ETH, SOL, Stable)
+          </div>
         </div>
       </div>
 
-      {/* Stats Grid */}
-      <div style={styles.statsGrid}>
-        <StatCard label="Activos Monitoreados" value="12" icon="📈" color="var(--accent)" />
-        <StatCard label="Módulos Activos" value="6" icon="🧩" color="#4caf50" />
-        <StatCard label="Estrategias Core" value="3" icon="⚙️" color="#2196f3" />
-        <StatCard label="LLM Integrado" value="Ollama" icon="🤖" color="#9c27b0" />
-      </div>
+      {/* ── Main 16:9 Grid (60% Analysis & Evolution / 40% Action Desk & Signals) ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '16px' }}>
+        {/* Left Column (60%): Equity Curve & Portfolios Breakdown */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {/* Chart Container */}
+          <div
+            style={{
+              padding: '16px',
+              backgroundColor: 'var(--bg-surface)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-bright)', fontFamily: 'monospace' }}>
+                  📈 EVOLUCIÓN PATRIMONIAL CONSOLIDADA
+                </div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                  Crecimiento del capital acumulado de las 3 carteras en dólares
+                </div>
+              </div>
 
-      {/* Main Grid: Chart + AI Assistant */}
-      <div style={styles.mainGrid}>
-        {/* Left Column: Live Chart Preview */}
-        <div style={styles.card}>
-          <div style={styles.cardHeader}>
-            <div>
-              <h3 style={styles.cardTitle}>Gráfico de Mercado</h3>
-              <p style={styles.cardSubtitle}>Datos históricos OHLCV con caché SQLite local</p>
+              {/* Timeframe Buttons */}
+              <div style={{ display: 'flex', gap: '4px' }}>
+                {(['3M', '6M', 'YTD', 'ALL'] as const).map((tf) => (
+                  <button
+                    key={tf}
+                    onClick={() => setEquityTimeframe(tf)}
+                    style={{
+                      padding: '3px 8px',
+                      backgroundColor: equityTimeframe === tf ? 'var(--accent)' : 'var(--bg-surface-card)',
+                      color: equityTimeframe === tf ? '#FFFFFF' : 'var(--text-secondary)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 'var(--radius-sm)',
+                      fontSize: '0.7rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      fontFamily: 'monospace',
+                    }}
+                  >
+                    {tf}
+                  </button>
+                ))}
+              </div>
             </div>
-            <select
-              value={selectedSymbol}
-              onChange={(e) => setSelectedSymbol(e.target.value)}
-              style={styles.select}
+
+            {/* SVG Interactive Chart */}
+            <div style={{ width: '100%', height: '190px', position: 'relative' }}>
+              <svg width="100%" height="100%" viewBox={`0 0 ${svgWidth} ${svgHeight}`} preserveAspectRatio="none">
+                <defs>
+                  <linearGradient id="equityGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.25" />
+                    <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.0" />
+                  </linearGradient>
+                </defs>
+
+                {/* Grid Lines */}
+                <line x1={paddingX} y1={paddingY} x2={svgWidth - paddingX} y2={paddingY} stroke="var(--border-subtle)" strokeDasharray="3 3" />
+                <line x1={paddingX} y1={svgHeight / 2} x2={svgWidth - paddingX} y2={svgHeight / 2} stroke="var(--border-subtle)" strokeDasharray="3 3" />
+                <line x1={paddingX} y1={svgHeight - paddingY} x2={svgWidth - paddingX} y2={svgHeight - paddingY} stroke="var(--border)" />
+
+                {/* Area & Line */}
+                <path d={areaD} fill="url(#equityGrad)" />
+                <path d={pathD} fill="none" stroke="var(--accent)" strokeWidth="2.5" />
+
+                {/* Points */}
+                {points.map((p) => (
+                  <g key={p.pt.date}>
+                    <circle cx={p.x} cy={p.y} r="3.5" fill="var(--bg-canvas)" stroke="var(--accent)" strokeWidth="2" />
+                    <text x={p.x} y={svgHeight - 8} fontSize="9" fill="var(--text-muted)" textAnchor="middle" fontFamily="monospace">
+                      {p.pt.date.slice(5)}
+                    </text>
+                  </g>
+                ))}
+              </svg>
+            </div>
+
+            {/* Sub-bar with allocations & currency risk */}
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                padding: '8px 12px',
+                backgroundColor: 'var(--bg-surface-card)',
+                borderRadius: 'var(--radius-sm)',
+                fontSize: '0.72rem',
+                fontFamily: 'monospace',
+                color: 'var(--text-secondary)',
+              }}
             >
-              <option value="SPY">SPY (S&P 500)</option>
-              <option value="QQQ">QQQ (Nasdaq 100)</option>
-              <option value="BTC">BTC (Bitcoin)</option>
-              <option value="GLD">GLD (Oro)</option>
-              <option value="TLT">TLT (Bonos 20Y)</option>
-            </select>
+              <span>
+                Distribución: <strong style={{ color: 'var(--accent)' }}>Cash {pctCash.toFixed(0)}%</strong> |{' '}
+                <strong style={{ color: 'var(--signal-warning)' }}>IOL {pctIol.toFixed(0)}%</strong> |{' '}
+                <strong style={{ color: 'var(--signal-bullish)' }}>Cripto {pctBinance.toFixed(0)}%</strong>
+              </span>
+              <span>
+                Riesgo Cambiario:{' '}
+                <strong style={{ color: 'var(--text-bright)' }}>USD/USDT {(pctUsd + pctBinance).toFixed(0)}%</strong> |{' '}
+                <strong style={{ color: 'var(--signal-warning)' }}>ARS {pctArs.toFixed(0)}%</strong>
+              </span>
+            </div>
           </div>
 
-          {loadingBars ? (
-            <div style={styles.loadingBox}>
-              <div style={styles.spinner} />
-              <span>Cargando datos de {selectedSymbol}...</span>
+          {/* Holdings Snapshot Table (High density) */}
+          <div
+            style={{
+              padding: '16px',
+              backgroundColor: 'var(--bg-surface)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-bright)', fontFamily: 'monospace' }}>
+                💼 ACTIVOS PRINCIPALES CONSOLIDADOS
+              </div>
+              <button
+                onClick={() => setActiveRoute('/portfolio')}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--accent)',
+                  fontSize: '0.72rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  fontFamily: 'monospace',
+                }}
+              >
+                Ver todos ({cashHoldings.length + iolHoldings.length + binanceHoldings.length}) →
+              </button>
             </div>
-          ) : chartData.length > 0 ? (
-            <FinancialChart type="candlestick" data={chartData} height={320} />
-          ) : (
-            <div style={styles.emptyChart}>
-              <p>No hay datos cargados para {selectedSymbol}. Haz clic en Actualizar en Quick Actions.</p>
-            </div>
-          )}
+
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem', fontFamily: 'monospace' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', textAlign: 'left' }}>
+                  <th style={{ padding: '6px' }}>ACTIVO</th>
+                  <th style={{ padding: '6px' }}>CARTERA</th>
+                  <th style={{ padding: '6px', textAlign: 'right' }}>CANTIDAD</th>
+                  <th style={{ padding: '6px', textAlign: 'right' }}>VALUACIÓN USD</th>
+                  <th style={{ padding: '6px', textAlign: 'right' }}>PNL %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {/* Binance items */}
+                {binanceHoldings.slice(0, 3).map((b) => {
+                  const val = b.amount * b.currentPriceUsdt;
+                  const pnl = ((b.currentPriceUsdt - b.avgBuyPriceUsdt) / b.avgBuyPriceUsdt) * 100;
+                  return (
+                    <tr key={b.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                      <td style={{ padding: '6px', color: 'var(--text-bright)', fontWeight: 700 }}>{b.symbol}</td>
+                      <td style={{ padding: '6px', color: 'var(--signal-bullish)' }}>Binance Spot</td>
+                      <td style={{ padding: '6px', textAlign: 'right' }}>{b.amount}</td>
+                      <td style={{ padding: '6px', textAlign: 'right', fontWeight: 600 }}>${val.toLocaleString('en-US', { maximumFractionDigits: 0 })}</td>
+                      <td style={{ padding: '6px', textAlign: 'right', fontWeight: 700, color: pnl >= 0 ? 'var(--signal-bullish)' : 'var(--signal-bearish)' }}>
+                        {pnl >= 0 ? '+' : ''}
+                        {pnl.toFixed(1)}%
+                      </td>
+                    </tr>
+                  );
+                })}
+
+                {/* IOL items */}
+                {iolHoldings.slice(0, 3).map((i) => {
+                  const valUsd = (i.nominalQuantity * i.currentPriceArs) / rates.ccl;
+                  const pnl = ((i.currentPriceArs - i.avgBuyPriceArs) / i.avgBuyPriceArs) * 100;
+                  return (
+                    <tr key={i.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                      <td style={{ padding: '6px', color: 'var(--text-bright)', fontWeight: 700 }}>{i.symbol}</td>
+                      <td style={{ padding: '6px', color: 'var(--signal-warning)' }}>IOL ({i.assetType})</td>
+                      <td style={{ padding: '6px', textAlign: 'right' }}>{i.nominalQuantity.toLocaleString()}</td>
+                      <td style={{ padding: '6px', textAlign: 'right', fontWeight: 600 }}>${valUsd.toLocaleString('en-US', { maximumFractionDigits: 0 })}</td>
+                      <td style={{ padding: '6px', textAlign: 'right', fontWeight: 700, color: pnl >= 0 ? 'var(--signal-bullish)' : 'var(--signal-bearish)' }}>
+                        {pnl >= 0 ? '+' : ''}
+                        {pnl.toFixed(1)}%
+                      </td>
+                    </tr>
+                  );
+                })}
+
+                {/* Cash item */}
+                {cashHoldings.slice(0, 2).map((c) => {
+                  const valUsd = c.currency === 'USD' ? c.amount : c.amount / rates.ccl;
+                  return (
+                    <tr key={c.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                      <td style={{ padding: '6px', color: 'var(--text-bright)', fontWeight: 700 }}>{c.currency} Líquido</td>
+                      <td style={{ padding: '6px', color: 'var(--accent)' }}>Cash ({c.institution})</td>
+                      <td style={{ padding: '6px', textAlign: 'right' }}>{c.amount.toLocaleString()}</td>
+                      <td style={{ padding: '6px', textAlign: 'right', fontWeight: 600 }}>${valUsd.toLocaleString('en-US', { maximumFractionDigits: 0 })}</td>
+                      <td style={{ padding: '6px', textAlign: 'right', color: 'var(--text-muted)' }}>
+                        {c.yieldRateAnnual ? `${c.yieldRateAnnual}% TNA` : '0%'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
 
-        {/* Right Column: Ollama AI Assistant */}
-        <div style={styles.card}>
-          <div style={styles.cardHeader}>
-            <div>
-              <h3 style={styles.cardTitle}>Asistente AI (Ollama Local)</h3>
-              <p style={styles.cardSubtitle}>Razonamiento y análisis de mercado en tu máquina</p>
+        {/* Right Column (40%): Action Desk & Active Market Signals */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {/* Action & Notification Desk */}
+          <div
+            style={{
+              padding: '16px',
+              backgroundColor: 'var(--bg-surface)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-bright)', fontFamily: 'monospace' }}>
+                🔔 BANDEJA DE ACCIONES & CONCILIACIÓN
+              </div>
+              <span style={{ fontSize: '0.68rem', padding: '1px 6px', borderRadius: '2px', backgroundColor: 'var(--signal-warning-muted)', color: 'var(--signal-warning)', fontWeight: 700 }}>
+                {alerts.length} pendientes
+              </span>
             </div>
-            <button
-              onClick={handleRunAiAnalysis}
-              disabled={aiLoading}
-              style={styles.aiButton}
-            >
-              {aiLoading ? 'Analizando...' : '✨ Analizar'}
-            </button>
+
+            {alerts.length === 0 ? (
+              <div style={{ padding: '16px', textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                ✅ Todas las carteras y conciliaciones están al día.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {alerts.map((alt) => (
+                  <div
+                    key={alt.id}
+                    style={{
+                      padding: '10px',
+                      backgroundColor: 'var(--bg-surface-card)',
+                      borderLeft: `3px solid ${alt.severity === 'warning' ? 'var(--signal-warning)' : 'var(--accent)'}`,
+                      borderTop: '1px solid var(--border-subtle)',
+                      borderRight: '1px solid var(--border-subtle)',
+                      borderBottom: '1px solid var(--border-subtle)',
+                      borderRadius: '0 var(--radius-sm) var(--radius-sm) 0',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '4px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-bright)' }}>{alt.title}</span>
+                      <button
+                        onClick={() => dismissAlert(alt.id)}
+                        style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.7rem' }}
+                        title="Descartar alerta"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>{alt.detail}</div>
+                    {alt.actionRoute && (
+                      <button
+                        onClick={() => setActiveRoute(alt.actionRoute!)}
+                        style={{
+                          alignSelf: 'flex-start',
+                          marginTop: '4px',
+                          padding: '2px 8px',
+                          backgroundColor: 'var(--bg-canvas)',
+                          border: '1px solid var(--border)',
+                          color: 'var(--accent)',
+                          fontSize: '0.68rem',
+                          fontWeight: 600,
+                          borderRadius: '2px',
+                          cursor: 'pointer',
+                          fontFamily: 'monospace',
+                        }}
+                      >
+                        {alt.actionLabel || 'Resolver'} →
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
-          {aiLoading && (
-            <div style={styles.loadingBox}>
-              <div style={styles.spinner} />
-              <span>Consultando modelo local (Ollama)...</span>
+          {/* Tactical Signals Radar with Van Tharp Integration */}
+          <div
+            style={{
+              padding: '16px',
+              backgroundColor: 'var(--bg-surface)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px',
+              flex: 1,
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-bright)', fontFamily: 'monospace' }}>
+                  🎯 RADAR DE SEÑALES ACTIVAS
+                </div>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
+                  Generadas por Top-Down, Intermarket y Topology
+                </div>
+              </div>
+              <button
+                onClick={() => setActiveRoute('/top-down')}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--accent)',
+                  fontSize: '0.72rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  fontFamily: 'monospace',
+                }}
+              >
+                Abrir Engine →
+              </button>
             </div>
-          )}
 
-          {aiError && (
-            <div style={styles.errorBox}>
-              <strong>Aviso de Conexión:</strong>
-              <p style={{ margin: '4px 0 0', fontSize: '0.8125rem' }}>{aiError}</p>
-            </div>
-          )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {ACTIVE_SIGNALS.map((sig) => (
+                <div
+                  key={sig.symbol}
+                  style={{
+                    padding: '10px',
+                    backgroundColor: 'var(--bg-surface-card)',
+                    border: '1px solid var(--border-subtle)',
+                    borderRadius: 'var(--radius-sm)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '6px',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <strong style={{ fontSize: '0.84rem', color: 'var(--text-bright)', fontFamily: 'monospace' }}>{sig.symbol}</strong>
+                      <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{sig.name}</span>
+                    </div>
 
-          {aiAnalysis && !aiLoading && (
-            <div style={styles.aiResult}>
-              <div style={styles.aiMarkdown}>{aiAnalysis}</div>
-            </div>
-          )}
+                    <span
+                      style={{
+                        padding: '1px 6px',
+                        borderRadius: '2px',
+                        fontSize: '0.68rem',
+                        fontWeight: 700,
+                        fontFamily: 'monospace',
+                        backgroundColor:
+                          sig.direction === 'BUY'
+                            ? 'var(--signal-bullish-muted)'
+                            : sig.direction === 'SELL'
+                            ? 'var(--signal-bearish-muted)'
+                            : 'var(--bg-canvas)',
+                        color:
+                          sig.direction === 'BUY'
+                            ? 'var(--signal-bullish)'
+                            : sig.direction === 'SELL'
+                            ? 'var(--signal-bearish)'
+                            : 'var(--signal-neutral)',
+                      }}
+                    >
+                      {sig.direction} ({sig.score}/100)
+                    </span>
+                  </div>
 
-          {!aiAnalysis && !aiLoading && !aiError && (
-            <div style={styles.emptyAi}>
-              <span style={{ fontSize: '2rem', marginBottom: '8px' }}>🤖</span>
-              <p style={{ margin: 0, fontWeight: 600, color: 'var(--text-primary)' }}>
-                Análisis Contextual con LLM
-              </p>
-              <p style={{ margin: '4px 0 0', fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
-                Haz clic en "Analizar" para que el modelo local evalúe la acción del precio de {selectedSymbol}.
-              </p>
+                  <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>
+                    <span style={{ color: 'var(--accent)', fontWeight: 600 }}>{sig.source}:</span> {sig.rationale}
+                  </div>
+
+                  {/* Action Bar: Van Tharp Sizing Button + Chart Button */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+                    <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                      Entry: ${sig.suggestedEntry} | Stop: ${sig.suggestedStop}
+                    </span>
+
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button
+                        onClick={() => handleOpenSizingModal(sig)}
+                        style={{
+                          padding: '3px 8px',
+                          backgroundColor: 'var(--accent)',
+                          border: 'none',
+                          color: '#FFFFFF',
+                          fontSize: '0.68rem',
+                          fontWeight: 700,
+                          borderRadius: '2px',
+                          cursor: 'pointer',
+                          fontFamily: 'monospace',
+                        }}
+                      >
+                        📐 Position Size (Van Tharp)
+                      </button>
+                      <button
+                        onClick={() => setActiveRoute('/chart')}
+                        style={{
+                          padding: '3px 6px',
+                          backgroundColor: 'transparent',
+                          border: '1px solid var(--border)',
+                          color: 'var(--text-secondary)',
+                          fontSize: '0.65rem',
+                          borderRadius: '2px',
+                          cursor: 'pointer',
+                          fontFamily: 'monospace',
+                        }}
+                      >
+                        Gráfico 📉
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
-          )}
+          </div>
         </div>
       </div>
 
-      {/* Action Feedback Banner */}
-      {actionFeedback && (
-        <div style={styles.feedbackBanner}>
-          <span>{actionFeedback}</span>
-          <button onClick={() => setActionFeedback(null)} style={styles.closeFeedbackBtn}>
-            ×
-          </button>
+      {/* ── Van Tharp Position Sizing Drawer / Modal ── */}
+      {selectedSignalForSizing && sizingResult && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.75)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '20px',
+          }}
+        >
+          <div
+            style={{
+              width: '100%',
+              maxWidth: '560px',
+              backgroundColor: 'var(--bg-surface)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius)',
+              boxShadow: 'var(--shadow)',
+              padding: '20px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '14px',
+              fontFamily: 'monospace',
+            }}
+          >
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1rem', color: 'var(--text-bright)' }}>
+                  📐 Calculadora de Position Sizing (Van Tharp)
+                </h3>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                  {selectedSignalForSizing.symbol} - {selectedSignalForSizing.name} ({selectedSignalForSizing.targetPortfolio.toUpperCase()})
+                </span>
+              </div>
+              <button
+                onClick={() => setSelectedSignalForSizing(null)}
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '1.1rem', cursor: 'pointer' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {sizingSuccessMsg ? (
+              <div style={{ padding: '16px', backgroundColor: 'rgba(16, 185, 129, 0.15)', border: '1px solid var(--signal-bullish)', borderRadius: 'var(--radius-sm)', color: 'var(--signal-bullish)', fontSize: '0.85rem' }}>
+                {sizingSuccessMsg}
+              </div>
+            ) : (
+              <>
+                {/* Inputs Grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px', fontSize: '0.75rem' }}>
+                  <div>
+                    <label style={{ color: 'var(--text-muted)' }}>Capital de Cuenta (Equity Total):</label>
+                    <input
+                      type="text"
+                      disabled
+                      value={`$${totalNetWorthUsd.toLocaleString('en-US', { maximumFractionDigits: 0 })} USD`}
+                      style={{ width: '100%', padding: '6px', backgroundColor: 'var(--bg-surface-card)', border: '1px solid var(--border)', color: 'var(--text-bright)', borderRadius: 'var(--radius-sm)', marginTop: '2px' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ color: 'var(--text-muted)' }}>Riesgo Máximo (1R en %):</label>
+                    <select
+                      value={riskPct}
+                      onChange={(e) => setRiskPct(parseFloat(e.target.value))}
+                      style={{ width: '100%', padding: '6px', backgroundColor: 'var(--bg-canvas)', border: '1px solid var(--border)', color: 'var(--text-bright)', borderRadius: 'var(--radius-sm)', marginTop: '2px' }}
+                    >
+                      <option value="0.5">0.5% ($R = ${(totalNetWorthUsd * 0.005).toFixed(0)} USD)</option>
+                      <option value="1.0">1.0% ($R = ${(totalNetWorthUsd * 0.01).toFixed(0)} USD)</option>
+                      <option value="1.5">1.5% ($R = ${(totalNetWorthUsd * 0.015).toFixed(0)} USD)</option>
+                      <option value="2.0">2.0% ($R = ${(totalNetWorthUsd * 0.02).toFixed(0)} USD)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ color: 'var(--text-muted)' }}>Precio de Entrada ($):</label>
+                    <input
+                      type="number"
+                      step="any"
+                      value={customEntry}
+                      onChange={(e) => setCustomEntry(parseFloat(e.target.value) || 0)}
+                      style={{ width: '100%', padding: '6px', backgroundColor: 'var(--bg-canvas)', border: '1px solid var(--border)', color: 'var(--text-bright)', borderRadius: 'var(--radius-sm)', marginTop: '2px' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ color: 'var(--text-muted)' }}>Stop Loss Hard ($):</label>
+                    <input
+                      type="number"
+                      step="any"
+                      value={customStop}
+                      onChange={(e) => setCustomStop(parseFloat(e.target.value) || 0)}
+                      style={{ width: '100%', padding: '6px', backgroundColor: 'var(--bg-canvas)', border: '1px solid var(--border)', color: 'var(--signal-bearish)', borderRadius: 'var(--radius-sm)', marginTop: '2px' }}
+                    />
+                  </div>
+
+                  <div style={{ gridColumn: 'span 2' }}>
+                    <label style={{ color: 'var(--text-muted)' }}>Target Profit Objetivo ($):</label>
+                    <input
+                      type="number"
+                      step="any"
+                      value={customTarget}
+                      onChange={(e) => setCustomTarget(parseFloat(e.target.value) || 0)}
+                      style={{ width: '100%', padding: '6px', backgroundColor: 'var(--bg-canvas)', border: '1px solid var(--border)', color: 'var(--signal-bullish)', borderRadius: 'var(--radius-sm)', marginTop: '2px' }}
+                    />
+                  </div>
+                </div>
+
+                {/* Sizing Calculation Results Box */}
+                <div
+                  style={{
+                    padding: '12px',
+                    backgroundColor: 'var(--bg-surface-card)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius-sm)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '6px',
+                    fontSize: '0.78rem',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Presupuesto de Riesgo (1R):</span>
+                    <strong style={{ color: 'var(--signal-bearish)' }}>${sizingResult.totalRiskAmount.toFixed(2)} USD</strong>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Riesgo por Unidad (Entry - Stop):</span>
+                    <strong>${sizingResult.riskPerShare.toFixed(2)} ({sizingResult.riskPerSharePct.toFixed(1)}%)</strong>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border-subtle)', paddingTop: '6px' }}>
+                    <span style={{ color: 'var(--text-bright)', fontWeight: 700 }}>Cantidad Recomendada a Comprar:</span>
+                    <strong style={{ fontSize: '1rem', color: 'var(--signal-bullish)' }}>
+                      {sizingResult.recommendedQuantity} {selectedSignalForSizing.symbol}
+                    </strong>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Capital Requerido para la Orden:</span>
+                    <strong>${sizingResult.totalCapitalRequired.toLocaleString('en-US', { maximumFractionDigits: 2 })} ({sizingResult.portfolioAllocationPct.toFixed(1)}% cartera)</strong>
+                  </div>
+
+                  {sizingResult.rMultipleTarget && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--accent)' }}>
+                      <span>Ratio Beneficio/Riesgo Objetivo:</span>
+                      <strong>{sizingResult.rMultipleTarget}R (Target)</strong>
+                    </div>
+                  )}
+
+                  {sizingResult.warningMessage && (
+                    <div style={{ marginTop: '6px', padding: '6px', backgroundColor: 'var(--signal-warning-muted)', color: 'var(--signal-warning)', fontSize: '0.7rem', borderRadius: '3px' }}>
+                      {sizingResult.warningMessage}
+                    </div>
+                  )}
+                </div>
+
+                {/* Actions */}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>
+                  <button
+                    onClick={() => setSelectedSignalForSizing(null)}
+                    style={{ padding: '8px 14px', backgroundColor: 'transparent', border: '1px solid var(--border)', color: 'var(--text-muted)', cursor: 'pointer', borderRadius: 'var(--radius-sm)' }}
+                  >
+                    Cerrar
+                  </button>
+                  <button
+                    onClick={handleExecuteSizedOrder}
+                    disabled={sizingResult.recommendedQuantity <= 0 || sizingResult.isOverallocated}
+                    style={{
+                      padding: '8px 16px',
+                      backgroundColor: sizingResult.isOverallocated ? 'var(--text-muted)' : 'var(--signal-bullish)',
+                      color: '#000000',
+                      border: 'none',
+                      borderRadius: 'var(--radius-sm)',
+                      fontWeight: 700,
+                      cursor: sizingResult.isOverallocated ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    ⚡ Registrar Orden en Cartera {selectedSignalForSizing.targetPortfolio.toUpperCase()}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       )}
-
-      {/* Quick Actions Grid */}
-      <div style={styles.card}>
-        <h3 style={{ margin: '0 0 16px', fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-          Acciones Rápidas del Motor
-        </h3>
-        <div style={styles.quickActionsGrid}>
-          {[
-            { id: 'greet', label: 'Test IPC Core', desc: 'Verificar canal de comunicación Tauri' },
-            { id: 'market-data', label: 'Sincronizar Cache', desc: `Descargar barras de ${selectedSymbol}` },
-            { id: 'strategy', label: 'Evaluar Señales', desc: 'Ejecutar MA Crossover en Rust' },
-            { id: 'backtest', label: 'Ir a Backtest', desc: 'Simulación completa de estrategias' },
-            { id: 'elliott', label: 'Conteo Elliott', desc: 'Explorar ondas fractales' },
-          ].map((cmd) => (
-            <div
-              key={cmd.id}
-              onClick={() => handleQuickAction(cmd.id)}
-              style={styles.actionCard}
-            >
-              <p style={{ margin: '0 0 4px', fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.9375rem' }}>
-                {cmd.label}
-              </p>
-              <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
-                {cmd.desc}
-              </p>
-            </div>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  container: {
-    maxWidth: 1200,
-    margin: '0 auto',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '24px',
-  },
-  header: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    gap: '12px',
-  },
-  title: {
-    margin: 0,
-    fontSize: '1.75rem',
-    fontWeight: 700,
-    color: 'var(--text-primary)',
-  },
-  subtitle: {
-    margin: '4px 0 0',
-    color: 'var(--text-secondary)',
-    fontSize: '0.875rem',
-  },
-  statusBadge: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    padding: '6px 14px',
-    borderRadius: 'var(--radius)',
-    backgroundColor: 'rgba(76, 175, 80, 0.1)',
-    border: '1px solid #4caf50',
-  },
-  statusText: {
-    fontSize: '0.8125rem',
-    fontWeight: 600,
-    color: '#4caf50',
-  },
-  statsGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-    gap: '16px',
-  },
-  mainGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))',
-    gap: '20px',
-  },
-  card: {
-    padding: '20px',
-    borderRadius: 'var(--radius)',
-    backgroundColor: 'var(--bg-secondary)',
-    border: '1px solid var(--border)',
-    boxShadow: 'var(--shadow)',
-  },
-  cardHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '16px',
-    flexWrap: 'wrap',
-    gap: '8px',
-  },
-  cardTitle: {
-    margin: 0,
-    fontSize: '1rem',
-    fontWeight: 600,
-    color: 'var(--text-primary)',
-  },
-  cardSubtitle: {
-    margin: '4px 0 0',
-    fontSize: '0.8125rem',
-    color: 'var(--text-secondary)',
-  },
-  select: {
-    padding: '6px 12px',
-    borderRadius: 'var(--radius)',
-    border: '1px solid var(--border)',
-    backgroundColor: 'var(--bg-primary)',
-    color: 'var(--text-primary)',
-    fontSize: '13px',
-    outline: 'none',
-  },
-  aiButton: {
-    padding: '8px 16px',
-    backgroundColor: '#9c27b0',
-    color: '#fff',
-    border: 'none',
-    borderRadius: 'var(--radius)',
-    cursor: 'pointer',
-    fontSize: '13px',
-    fontWeight: 600,
-  },
-  loadingBox: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '10px',
-    padding: '40px 20px',
-    color: 'var(--text-secondary)',
-  },
-  spinner: {
-    width: '20px',
-    height: '20px',
-    border: '2px solid var(--border)',
-    borderTopColor: 'var(--accent)',
-    borderRadius: '50%',
-    animation: 'spin 0.8s linear infinite',
-  },
-  emptyChart: {
-    height: '320px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    color: 'var(--text-secondary)',
-    fontSize: '0.875rem',
-  },
-  emptyAi: {
-    minHeight: '260px',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    textAlign: 'center',
-    padding: '20px',
-  },
-  aiResult: {
-    maxHeight: '300px',
-    overflowY: 'auto',
-    padding: '14px',
-    backgroundColor: 'var(--bg-primary)',
-    borderRadius: 'var(--radius)',
-    border: '1px solid var(--border)',
-  },
-  aiMarkdown: {
-    fontSize: '0.875rem',
-    lineHeight: 1.6,
-    color: 'var(--text-primary)',
-    whiteSpace: 'pre-wrap',
-  },
-  errorBox: {
-    padding: '12px',
-    backgroundColor: '#ffebee',
-    color: '#c62828',
-    borderRadius: 'var(--radius)',
-    fontSize: '0.875rem',
-  },
-  feedbackBanner: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: '12px 16px',
-    backgroundColor: 'var(--bg-secondary)',
-    border: '1px solid var(--accent)',
-    borderRadius: 'var(--radius)',
-    color: 'var(--text-primary)',
-    fontSize: '0.875rem',
-    fontWeight: 500,
-  },
-  closeFeedbackBtn: {
-    background: 'none',
-    border: 'none',
-    color: 'var(--text-secondary)',
-    fontSize: '1.25rem',
-    cursor: 'pointer',
-  },
-  quickActionsGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-    gap: '12px',
-  },
-  actionCard: {
-    padding: '16px',
-    borderRadius: 'var(--radius)',
-    backgroundColor: 'var(--bg-primary)',
-    border: '1px solid var(--border)',
-    cursor: 'pointer',
-    transition: 'transform 0.15s ease, border-color 0.15s ease',
-  },
-};
