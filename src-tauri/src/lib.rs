@@ -708,6 +708,11 @@ pub fn run() {
                 tracing::info!("Database initialized at {:?}", db_path);
             }
 
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
