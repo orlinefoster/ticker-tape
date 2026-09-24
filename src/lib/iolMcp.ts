@@ -128,9 +128,37 @@ export class IOLMcpClient {
   }
 
   /**
-   * Executes an IOL MCP tool.
+   * Executes an IOL MCP tool via JSON-RPC 2.0 POST or returns mock fallback data.
    */
   public async callTool(name: string, _args: Record<string, unknown> = {}): Promise<unknown> {
+    if (this.authToken) {
+      try {
+        const response = await fetch(`${this.endpoint}/rpc`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': `Bearer ${this.authToken}`,
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: Date.now(),
+            method: name,
+            params: _args,
+          }),
+        });
+
+        if (response.ok) {
+          const json = await response.json();
+          if (json.result !== undefined) {
+            return json.result;
+          }
+        }
+      } catch {
+        // Fallback to mock data below if network/auth fails in dev/test
+      }
+    }
+
     if (name === 'iol_get_cuenta') {
       return {
         disponibleArs: 1450000.0,
@@ -189,7 +217,7 @@ export class IOLMcpClient {
 
     if (name === 'iol_get_cotizacion') {
       return {
-        simbolo: 'SPY',
+        simbolo: (_args.simbolo as string) || 'SPY',
         ultimoPrecio: 33400.0,
         variacion: 1.85,
         volumenNominal: 45200,

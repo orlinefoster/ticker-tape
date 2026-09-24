@@ -1,0 +1,10 @@
+{
+  "name": "iol_get_cuenta",
+  "description": "Obtiene el estado de cuenta consolidado de InvertirOnline (saldos disponibles en ARS y USD, total valorizado).",
+  "parameters": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {},
+    "required": []
+  }
+}

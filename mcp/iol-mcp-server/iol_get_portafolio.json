@@ -1,0 +1,17 @@
+{
+  "name": "iol_get_portafolio",
+  "description": "Obtiene las tenencias valorizadas de CEDEARs, acciones BYMA, bonos soberanos y obligaciones negociables.",
+  "parameters": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "pais": {
+        "type": "string",
+        "enum": ["argentina", "estados_unidos"],
+        "default": "argentina",
+        "description": "País del mercado a consultar (argentina o estados_unidos)."
+      }
+    },
+    "required": []
+  }
+}

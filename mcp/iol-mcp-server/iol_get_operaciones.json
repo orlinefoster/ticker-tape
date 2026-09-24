@@ -1,0 +1,15 @@
+{
+  "name": "iol_get_operaciones",
+  "description": "Consulta el historial de transacciones, ejecuciones u órdenes pendientes de la cuenta comitente.",
+  "parameters": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "estado": {
+        "type": "string",
+        "description": "Filtro de estado de orden (ej. ejecutadas, pendientes, canceladas)."
+      }
+    },
+    "required": []
+  }
+}

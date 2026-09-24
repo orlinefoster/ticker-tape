@@ -1,0 +1,20 @@
+{
+  "name": "iol_get_cotizacion",
+  "description": "Consulta cotizaciones en tiempo real de especies en BYMA (acciones, CEDEARs, bonos).",
+  "parameters": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "simbolo": {
+        "type": "string",
+        "description": "Símbolo o ticker del activo (ej. SPY, AAPL, GGAL, GD30)."
+      },
+      "mercado": {
+        "type": "string",
+        "default": "bcba",
+        "description": "Mercado bursátil (por defecto bcba)."
+      }
+    },
+    "required": ["simbolo"]
+  }
+}
