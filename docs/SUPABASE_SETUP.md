@@ -28,11 +28,9 @@ Esta guía detalla cómo conectar tu proyecto en **Supabase** para centralizar d
 
 ## 3. Conectar Ticker Tape con Supabase
 
-1. En el panel de Supabase, ve a **Project Settings > API**.
-2. Copia los dos valores:
-   - **Project URL:** `https://xyzcompany.supabase.co`
-   - **anon / public key:** `eyJhbGciOi...`
-3. Abre **Ticker Tape** y navega a **Proveedores & Sync** (`/providers`).
-4. Pega la URL y la Anon Key en el panel inferior **☁️ Configuración de Conexión a Supabase Cloud**.
-5. Haz clic en **Guardar Configuración** y luego en **☁️ Ping Supabase Cloud**.
-6. Una vez conectado, las velas de mercado se consultarán automáticamente desde Supabase Cloud para no agotar cuotas externas.
+1. En el panel de Supabase o en **Proveedores & Sync** (`/providers`):
+   - **Project URL:** `https://leqrwgsjxgmxsqbbqzmc.supabase.co`
+   - **Anon Key:** `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxlcXJ3Z3NqeGdteHNxYmJxem1jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0NTQ4ODAsImV4cCI6MjA5MDAzMDg4MH0.8eibJu_B24AwRoTNioKVLP7UoVRx7oIPEyshdvI17Zw`
+2. En la pestaña **Proveedores & Sync**, pulsa **Guardar Configuración** y luego **☁️ Ping Supabase Cloud**.
+3. Las tablas ya están creadas y migradas en Supabase (`market_candles`, `portfolio_snapshots`, `portfolios`, `positions`, `transactions`).
+4. Una vez conectado, las velas de mercado y los snapshots patrimoniales se sincronizan automáticamente en la nube.
