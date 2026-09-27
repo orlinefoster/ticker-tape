@@ -2,6 +2,10 @@ import React, { useState } from 'react';
 import { Card, Button, Badge, StatMetric } from '@/components/ui';
 import { DonutChart, type PieSegment } from '@/components/DonutChart';
 import { commands } from '@/lib/tauri';
+import { useUIStore } from '@/store/uiStore';
+import { EquityCurveChart } from './components/EquityCurveChart';
+import { ExoPositionManagerModal } from './components/ExoPositionManagerModal';
+import { RiskReturnMetricsCard } from './components/RiskReturnMetricsCard';
 
 interface CryptoPosition {
   symbol: string;
@@ -152,11 +156,13 @@ const GENERATE_EQUITY_HISTORY = (currentEquity: number): EquityPoint[] => {
 };
 
 export default function CarteraModule() {
+  const { setActiveRoute } = useUIStore();
   const [activeTab, setActiveTab] = useState<'resumen' | 'equity' | 'money-management' | 'trades'>('resumen');
   const [positions, setPositions] = useState<CryptoPosition[]>(INITIAL_CRYPTO_POSITIONS);
   const [usdtCash] = useState<number>(4850.0);
   const [trades] = useState<TradeRecord[]>(INITIAL_TRADES);
   const [refreshingPrices, setRefreshingPrices] = useState(false);
+  const [selectedExoPosition, setSelectedExoPosition] = useState<CryptoPosition | null>(null);
 
   // Money Management States
   const [riskCapital, setRiskCapital] = useState<number>(57263.5);
@@ -446,6 +452,7 @@ export default function CarteraModule() {
                     <th style={{ padding: '9px 14px', color: 'var(--text-secondary)' }}>P&L ($)</th>
                     <th style={{ padding: '9px 14px', color: 'var(--text-secondary)' }}>P&L (%)</th>
                     <th style={{ padding: '9px 14px', color: 'var(--text-secondary)' }}>Peso</th>
+                    <th style={{ padding: '9px 14px', color: 'var(--text-secondary)', textAlign: 'center' }}>Gestión EXO / UTs</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -507,6 +514,16 @@ export default function CarteraModule() {
                           </span>
                         </div>
                       </td>
+                      <td style={{ padding: '9px 14px', textAlign: 'center' }}>
+                        <Button
+                          size="sm"
+                          variant="holo"
+                          onClick={() => setSelectedExoPosition(p)}
+                          style={{ fontSize: '0.72rem', padding: '3px 10px' }}
+                        >
+                          📐 EXO / VWAP
+                        </Button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -516,113 +533,14 @@ export default function CarteraModule() {
         </div>
       )}
 
-      {/* TAB 2: Equity Curve & Rendimiento */}
+      {/* TAB 2: Equity Curve con TradingView Lightweight Charts & Métricas */}
       {activeTab === 'equity' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          <Card variant="glass" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-bright)' }}>
-                  📈 Curva de Capital Acumulada (Equity Curve)
-                </h3>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                  Evolución temporal del saldo total de la cartera en USDT (últimos 30 días).
-                </span>
-              </div>
-
-              <div style={{ display: 'flex', gap: '14px', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem' }}>
-                  <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: 'var(--accent-sakura)' }} />
-                  <span style={{ color: 'var(--text-primary)' }}>Cartera USDT</span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem' }}>
-                  <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: 'var(--accent-mint)' }} />
-                  <span style={{ color: 'var(--text-secondary)' }}>Benchmark (BTC Index)</span>
-                </div>
-              </div>
-            </div>
-
-            <div style={{ width: '100%', height: '240px', position: 'relative', marginTop: '8px' }}>
-              <svg viewBox="0 0 800 240" style={{ width: '100%', height: '100%', overflow: 'visible' }}>
-                <defs>
-                  <linearGradient id="equitySheen" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#FF6B9D" stopOpacity="0.35" />
-                    <stop offset="50%" stopColor="#B388FF" stopOpacity="0.15" />
-                    <stop offset="100%" stopColor="#0B0D17" stopOpacity="0" />
-                  </linearGradient>
-                </defs>
-
-                <line x1="0" y1="60" x2="800" y2="60" stroke="rgba(255, 107, 157, 0.08)" strokeDasharray="4 4" />
-                <line x1="0" y1="120" x2="800" y2="120" stroke="rgba(255, 107, 157, 0.08)" strokeDasharray="4 4" />
-                <line x1="0" y1="180" x2="800" y2="180" stroke="rgba(255, 107, 157, 0.08)" strokeDasharray="4 4" />
-
-                {(() => {
-                  const minEq = Math.min(...equityHistory.map((p) => p.equity)) * 0.98;
-                  const maxEq = Math.max(...equityHistory.map((p) => p.equity)) * 1.02;
-                  const rangeY = maxEq - minEq || 1;
-
-                  const points = equityHistory.map((p, i) => {
-                    const x = (i / (equityHistory.length - 1)) * 800;
-                    const y = 220 - ((p.equity - minEq) / rangeY) * 200;
-                    return `${x},${y}`;
-                  });
-
-                  const pathD = `M 0,220 L ${points.join(' L ')} L 800,220 Z`;
-                  const lineD = `M ${points.join(' L ')}`;
-
-                  return (
-                    <>
-                      <path d={pathD} fill="url(#equitySheen)" />
-                      <path d={lineD} fill="none" stroke="var(--accent-sakura)" strokeWidth="3" style={{ filter: 'drop-shadow(0 0 8px rgba(255, 107, 157, 0.5))' }} />
-                    </>
-                  );
-                })()}
-              </svg>
-            </div>
-          </Card>
-
-          <Card style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-bright)' }}>
-                🌊 Curva de Drawdown Submarino (% Underwater)
-              </h3>
-              <span className="font-mono" style={{ fontSize: '0.78rem', color: 'var(--signal-bearish)', fontWeight: 700 }}>
-                Max Drawdown: {maxDrawdown.toFixed(2)}%
-              </span>
-            </div>
-
-            <div style={{ width: '100%', height: '120px', position: 'relative' }}>
-              <svg viewBox="0 0 800 120" style={{ width: '100%', height: '100%', overflow: 'visible' }}>
-                <defs>
-                  <linearGradient id="ddGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="rgba(255, 51, 102, 0.1)" />
-                    <stop offset="100%" stopColor="rgba(255, 51, 102, 0.45)" />
-                  </linearGradient>
-                </defs>
-
-                <line x1="0" y1="15" x2="800" y2="15" stroke="rgba(255, 255, 255, 0.15)" strokeWidth="1" />
-
-                {(() => {
-                  const minDD = Math.min(-10, maxDrawdown * 1.2);
-                  const points = equityHistory.map((p, i) => {
-                    const x = (i / (equityHistory.length - 1)) * 800;
-                    const y = 15 + (Math.abs(p.drawdown) / Math.abs(minDD)) * 95;
-                    return `${x},${y}`;
-                  });
-
-                  const pathD = `M 0,15 L ${points.join(' L ')} L 800,15 Z`;
-                  const lineD = `M ${points.join(' L ')}`;
-
-                  return (
-                    <>
-                      <path d={pathD} fill="url(#ddGrad)" />
-                      <path d={lineD} fill="none" stroke="var(--signal-bearish)" strokeWidth="2" />
-                    </>
-                  );
-                })()}
-              </svg>
-            </div>
-          </Card>
+          <EquityCurveChart
+            totalEquity={totalCarteraValue}
+            onOpenInChartModule={() => setActiveRoute('/chart')}
+          />
+          <RiskReturnMetricsCard />
         </div>
       )}
 
@@ -841,6 +759,16 @@ export default function CarteraModule() {
             </table>
           </div>
         </Card>
+      )}
+
+      {selectedExoPosition && (
+        <ExoPositionManagerModal
+          symbol={selectedExoPosition.symbol}
+          initialEntryPrice={selectedExoPosition.avgBuyPrice}
+          initialCurrentPrice={selectedExoPosition.currentPrice}
+          shares={selectedExoPosition.amount}
+          onClose={() => setSelectedExoPosition(null)}
+        />
       )}
     </div>
   );

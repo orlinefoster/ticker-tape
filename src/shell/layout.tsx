@@ -13,6 +13,7 @@ import MonitorModule from '@/modules/monitor';
 import MarketChartModule from '@/modules/chart';
 import ProvidersModule from '@/modules/providers';
 import TopDownModule from '@/modules/top_down';
+import WikiModule from '@/modules/wiki';
 import { ErrorBoundary } from '@/lib/errorBoundary';
 import './styles.css';
 
@@ -35,6 +36,7 @@ const modules: Record<string, ModuleEntry> = {
   '/elliott': { name: 'Elliott Wave', component: <ElliottWaveModule /> },
   '/portfolio': { name: 'Carteras & Patrimonio', component: <PortfolioModule /> },
   '/monitor': { name: 'Monitor', component: <MonitorModule /> },
+  '/wiki': { name: 'Wiki & Métodos', component: <WikiModule /> },
 };
 
 function ModulePlaceholder({ name }: { name: string }) {

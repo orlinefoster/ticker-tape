@@ -1,9 +1,10 @@
 //! Intermarket Analysis Module
 //!
-//! Determines the current economic cycle phase by analyzing relationships
-//! between stocks, bonds, commodities, currencies, and sectors.
+//! Determines the current economic cycle phase and John Murphy 6-Stage status
+//! by analyzing relationships between stocks, bonds, commodities, currencies,
+//! and credit spreads.
 //!
-//! Pipeline position: 1/6 — this is the first analysis run.
+//! Pipeline position: 1/6 — this is the foundational macro analysis.
 
 mod cycle;
 mod ratios;
@@ -16,23 +17,38 @@ use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-pub use cycle::MarketPhase;
-pub use ratios::KeyRatios;
+pub use cycle::{
+    detect_murphy_cycle, detect_phase, HistoricalCycleBand, LeadingLaggingStatus, MarketPhase,
+    MurphyCycleResult, StageScore, TacticalAssetAllocation,
+};
+pub use ratios::{
+    compute_extended_ratios, compute_key_ratios, IntermarketCorrelation, KeyRatios,
+    MacroRatioItem, NormalizedAssetSeries, NormalizedPoint, TrendDirection,
+};
 
-/// Symbols needed for intermarket analysis
+/// Symbols tracked for intermarket macro analysis
 const REQUIRED_SYMBOLS: &[&str] = &[
-    "SPY",  // US equities
-    "TLT",  // Long-term bonds
-    "AGG",  // Aggregate bonds
-    "DBC",  // Commodities
-    "DXY",  // US Dollar index
-    "XLF",  // Financials
-    "XLE",  // Energy
-    "XLV",  // Healthcare (defensive)
-    "XLK",  // Technology
-    "XLI",  // Industrials (cyclical)
-    "XLP",  // Consumer staples (defensive)
-    "XLY",  // Consumer discretionary (cyclical)
+    "SPY",  // US Large Cap Equities
+    "TLT",  // 20Y+ Long-Term US Treasuries
+    "DBC",  // Commodity Index
+    "GLD",  // Gold Physical Trust
+    "HYG",  // High Yield Corporate Bonds
+    "BTC",  // Bitcoin (Crypto Liquidity Proxy)
+    "XLF",  // Financials Sector
+    "XLE",  // Energy Sector
+    "XLK",  // Technology Sector
+    "QQQ",  // Nasdaq 100
+    "AGG",  // US Aggregate Bond Index
+    "DXY",  // US Dollar Index
+    "UUP",  // Invesco DB US Dollar Bullish Fund
+    "LQD",  // Investment Grade Corporate Bonds
+    "CPER", // US Copper Index Fund
+    "TIP",  // TIPS Inflation Protected Bonds
+    "SHY",  // 1-3 Year Treasury Bonds
+    "XLI",  // Industrials Sector
+    "XLV",  // Healthcare Sector
+    "XLP",  // Consumer Staples Sector
+    "XLY",  // Consumer Discretionary Sector
 ];
 
 /// Complete intermarket analysis output
@@ -40,9 +56,18 @@ const REQUIRED_SYMBOLS: &[&str] = &[
 pub struct IntermarketReport {
     pub date: NaiveDate,
     pub phase: MarketPhase,
+    pub stage: u8,
+    pub stage_name: String,
+    pub stage_description: String,
     pub confidence: f64,
+    pub stage_scores: Vec<StageScore>,
+    pub leaders: LeadingLaggingStatus,
+    pub tactical_allocation: Vec<TacticalAssetAllocation>,
     pub indicators: Vec<IndicatorResult>,
     pub key_ratios: KeyRatios,
+    pub macro_ratios: Vec<MacroRatioItem>,
+    pub normalized_series: Vec<NormalizedAssetSeries>,
+    pub correlation_matrix: IntermarketCorrelation,
     pub narrative: String,
 }
 
@@ -67,57 +92,76 @@ impl AnalysisModule for IntermarketModule {
     }
 
     fn description(&self) -> &str {
-        "Economic cycle phase detection via intermarket relationships"
+        "John Murphy 6-Stage Intermarket Cycle & Macro Asset Allocation Engine"
     }
 
     fn requirements(&self) -> Vec<DataRequirement> {
         REQUIRED_SYMBOLS.iter().map(|&s| DataRequirement {
             symbol: s.to_string(),
             range: "2y".to_string(),
-            description: format!("{} price data for intermarket analysis", s),
+            description: format!("{} price series for macro intermarket analysis", s),
         }).collect()
     }
 
     async fn analyze(&self, ctx: &ModuleContext) -> Result<Box<dyn ModuleOutput>> {
         let today = chrono::Utc::now().date_naive();
+        let from = (today - chrono::Duration::days(730)).to_string();
+        let to = today.to_string();
 
-        // 1. Fetch data for all required symbols
+        // 1. Fetch data for all available symbols
+        let mut dated_data: Vec<(String, Vec<(NaiveDate, f64)>)> = Vec::new();
         let mut price_data: Vec<(String, Vec<f64>)> = Vec::new();
+
         for &symbol in REQUIRED_SYMBOLS {
-            let from = (today - chrono::Duration::days(730)).to_string();
-            let to = today.to_string();
             match MarketDataRepository::get_bars(&ctx.db, symbol, &from, &to).await {
-                Ok(bars) => {
+                Ok(bars) if !bars.is_empty() => {
+                    let dated_bars: Vec<(NaiveDate, f64)> = bars.iter().map(|b| (b.date, b.close)).collect();
                     let closes: Vec<f64> = bars.iter().map(|b| b.close).collect();
-                    if !closes.is_empty() {
-                        price_data.push((symbol.to_string(), closes));
-                    }
+                    dated_data.push((symbol.to_string(), dated_bars));
+                    price_data.push((symbol.to_string(), closes));
                 }
+                Ok(_) => {}
                 Err(e) => {
                     tracing::warn!("[Intermarket] No data for {}: {}", symbol, e);
                 }
             }
         }
 
-        if price_data.len() < 4 {
-            anyhow::bail!("Intermarket analysis requires at least SPY, TLT, DBC, and DXY data");
+        if price_data.len() < 3 {
+            anyhow::bail!("El análisis intermarket requiere al menos 3 activos cargados (ej. SPY, TLT, DBC/GLD)");
         }
 
-        // 2. Compute key ratios
-        let key_ratios = ratios::compute_key_ratios(&price_data)?;
+        // 2. Compute extended key ratios, time series, normalized curves & correlations
+        let (key_ratios, macro_ratios, normalized_series, correlation_matrix) =
+            ratios::compute_extended_ratios(&dated_data)?;
 
-        // 3. Evaluate cycle phase
-        let (phase, confidence, indicators) = cycle::detect_phase(&price_data, &key_ratios);
+        // 3. Evaluate John Murphy cycle stage and macro phase
+        let cycle_res = cycle::detect_murphy_cycle(&price_data, &key_ratios);
 
-        // 4. Build narrative
-        let narrative = build_narrative(&phase, &indicators, confidence);
+        // 4. Build comprehensive narrative
+        let narrative = build_narrative(
+            &cycle_res.stage_name,
+            &cycle_res.stage_description,
+            &cycle_res.leaders.summary,
+            &cycle_res.indicators,
+            cycle_res.confidence,
+        );
 
         let report = IntermarketReport {
             date: today,
-            phase,
-            confidence,
-            indicators,
+            phase: cycle_res.phase,
+            stage: cycle_res.stage,
+            stage_name: cycle_res.stage_name,
+            stage_description: cycle_res.stage_description,
+            confidence: cycle_res.confidence,
+            stage_scores: cycle_res.stage_scores,
+            leaders: cycle_res.leaders,
+            tactical_allocation: cycle_res.tactical_allocation,
+            indicators: cycle_res.indicators,
             key_ratios,
+            macro_ratios,
+            normalized_series,
+            correlation_matrix,
             narrative,
         };
 
@@ -136,29 +180,26 @@ impl ModuleOutput for IntermarketReport {
     }
 }
 
-fn build_narrative(phase: &MarketPhase, indicators: &[IndicatorResult], confidence: f64) -> String {
+fn build_narrative(
+    stage_name: &str,
+    stage_desc: &str,
+    leaders_summary: &str,
+    indicators: &[IndicatorResult],
+    confidence: f64,
+) -> String {
     let bullish = indicators.iter().filter(|i| i.signal == "bullish").count();
     let bearish = indicators.iter().filter(|i| i.signal == "bearish").count();
     let total = indicators.len();
 
-    let phase_desc = match phase {
-        MarketPhase::EarlyExpansion => "Expansión temprana — mercado alcista con fundamentos mejorando.",
-        MarketPhase::LateExpansion => "Expansión tardía — momentum alcista pero con riesgos crecientes.",
-        MarketPhase::Peak => "Pico de ciclo — señales de agotamiento, cautela.",
-        MarketPhase::Contraction => "Contracción — mercado bajista, refugio en bonos.",
-        MarketPhase::Trough => "Fondo de ciclo — oportunidades de largo plazo emergiendo.",
-    };
-
     format!(
-        "{}\nSeñales: {}/{} alcistas, {}/{} bajistas.\nConfianza: {:.0}%.",
-        phase_desc, bullish, total, bearish, total, confidence * 100.0
+        "{}\n\n{}\n{}\n\nSeñales Macro: {}/{} alcistas, {}/{} bajistas | Confianza de Modelo: {:.0}%.",
+        stage_name, stage_desc, leaders_summary, bullish, total, bearish, total, confidence * 100.0
     )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    // Tests that need DB access are integration-level; unit tests don't need pool
 
     #[tokio::test]
     async fn test_module_name_and_description() {
@@ -173,6 +214,7 @@ mod tests {
         let reqs = m.requirements();
         assert!(!reqs.is_empty());
         assert!(reqs.iter().any(|r| r.symbol == "SPY"));
+        assert!(reqs.iter().any(|r| r.symbol == "TLT"));
     }
 
     #[test]
@@ -187,11 +229,8 @@ mod tests {
             },
         ];
 
-        let narrative = build_narrative(&MarketPhase::EarlyExpansion, &indicators, 0.8);
-        assert!(narrative.contains("Expansión temprana"));
-        assert!(narrative.contains("80%"));
-
-        let narrative2 = build_narrative(&MarketPhase::Contraction, &indicators, 0.6);
-        assert!(narrative2.contains("Contracción"));
+        let narrative = build_narrative("Etapa 2: Giro de Acciones", "Fase de expansión", "Las acciones lideran.", &indicators, 0.85);
+        assert!(narrative.contains("Etapa 2"));
+        assert!(narrative.contains("85%"));
     }
 }

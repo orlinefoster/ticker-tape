@@ -13,16 +13,30 @@ import {
 } from 'lightweight-charts';
 import { commands, type OHLCVBar } from '@/lib/tauri';
 import { useUIStore } from '@/store/uiStore';
+import {
+  isSyntheticSymbol,
+  getSyntheticBars,
+  SYNTHETIC_SYMBOLS,
+} from '@/modules/cartera/services/syntheticCatalog';
 
 export interface AssetReference {
   symbol: string;
   name: string;
-  category: 'ETF' | 'Stock' | 'Crypto' | 'Commodity' | 'Bond' | 'Sector';
+  category: 'ETF' | 'Stock' | 'Crypto' | 'Commodity' | 'Bond' | 'Sector' | 'Cartera';
   exchange: string;
   icon: string;
 }
 
 export const ASSET_CATALOG: AssetReference[] = [
+  // Cartera y Símbolos Sintéticos
+  ...SYNTHETIC_SYMBOLS.map((s) => ({
+    symbol: s.symbol,
+    name: s.name,
+    category: 'Cartera' as const,
+    exchange: 'Sintético',
+    icon: s.icon,
+  })),
+
   // ETFs & Indices
   { symbol: 'SPY', name: 'SPDR S&P 500 ETF Trust', category: 'ETF', exchange: 'NYSE Arca', icon: '📊' },
   { symbol: 'QQQ', name: 'Invesco QQQ Trust (Nasdaq 100)', category: 'ETF', exchange: 'NASDAQ', icon: '💻' },
@@ -153,6 +167,14 @@ export default function MarketChartModule() {
   const loadMarketData = async (sym: string, tf: string) => {
     setLoading(true);
     try {
+      if (isSyntheticSymbol(sym)) {
+        const synthetic = getSyntheticBars(sym);
+        setBars(synthetic);
+        setProviderUsed('Cartera Synthetic Engine');
+        setIsMockData(false);
+        setLoading(false);
+        return;
+      }
       const diag = await commands.testProviderFetch(sym, tf, false, 'auto');
       const fetched = await commands.fetchMarketData(sym, tf);
       if (fetched && fetched.length > 0) {
@@ -477,7 +499,7 @@ export default function MarketChartModule() {
             <div style={styles.autocompleteDropdown}>
               {/* Category Filter Tabs */}
               <div style={styles.categoryTabs}>
-                {['ALL', 'ETF', 'Stock', 'Crypto', 'Commodity', 'Bond', 'Sector'].map((cat) => (
+                {['ALL', 'Cartera', 'ETF', 'Stock', 'Crypto', 'Commodity', 'Bond', 'Sector'].map((cat) => (
                   <button
                     key={cat}
                     onClick={() => setSelectedCategory(cat)}

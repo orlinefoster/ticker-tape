@@ -37,6 +37,7 @@ const navGroups: NavGroup[] = [
       { route: '/backtesting', label: 'Backtesting', icon: '📈' },
       { route: '/providers', label: 'Proveedores & Sync', icon: '🔌' },
       { route: '/monitor', label: 'Monitor de Sistema', icon: '👁️' },
+      { route: '/wiki', label: 'Wiki & Métodos', icon: '📚' },
     ],
   },
 ];
