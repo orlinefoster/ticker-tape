@@ -120,7 +120,7 @@ export function RankingsTable({ rankings }: Props) {
       </h3>
 
       <div style={styles.tableWrapper}>
-        <table style={styles.table}>
+        <table className="institutional-table" style={styles.table}>
           <thead>
             <tr>
               {COLUMNS.map((col) => {

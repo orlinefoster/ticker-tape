@@ -136,7 +136,7 @@ fn compute_momentum_score(returns: &[f64; 5]) -> f64 {
 }
 
 /// Assign percentile rank (0–100) to each asset based on momentum_score.
-fn assign_percentile_ranks(rankings: &mut Vec<AssetRanking>) {
+fn assign_percentile_ranks(rankings: &mut [AssetRanking]) {
     let n = rankings.len() as f64;
     if n == 0.0 {
         return;

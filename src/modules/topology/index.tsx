@@ -1,44 +1,45 @@
-import { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import { commands } from '@/lib/tauri'
+import { useServiceStatusStore } from '@/store/serviceStatusStore'
+import { Card, Button, Badge } from '@/components/ui'
 import { RankingsTable } from './RankingsTable'
-import type { AssetRanking } from './RankingsTable'
 import { CorrelationHeatmap } from './CorrelationHeatmap'
 import { RegimeIndicator } from './RegimeIndicator'
+import { TopologyKpis } from './TopologyKpis'
+import { TopologyNetworkGraph } from './TopologyNetworkGraph'
+import type { TopologyReport } from './types'
 
-interface CorrelationMatrix {
-  symbols: string[]
-  correlations: number[][]
-}
+const PRESETS: { label: string; symbols: string[] }[] = [
+  { label: 'Macro Global', symbols: ['SPY', 'QQQ', 'TLT', 'GLD', 'DBC', 'BTC'] },
+  { label: 'Sectores US', symbols: ['XLK', 'XLF', 'XLE', 'XLV', 'XLI', 'XLY', 'XLP', 'XLU'] },
+  { label: 'Tech & Crypto', symbols: ['BTC', 'ETH', 'SOL', 'QQQ', 'NVDA', 'AAPL'] },
+]
 
-interface RegimeInfo {
-  regime: string
-  description: string
-  affected_symbols: string[]
-}
-
-interface TopologyReport {
-  date: string
-  universe_size: number
-  rankings: AssetRanking[]
-  correlations: CorrelationMatrix
-  regimes: RegimeInfo[]
-}
-
-const DEFAULT_SYMBOLS = ['SPY', 'QQQ', 'TLT', 'GLD', 'DBC', 'BTC']
+const WINDOWS: { label: string; days: number; description: string }[] = [
+  { label: '21d', days: 21, description: 'Táctico / Shock reciente' },
+  { label: '63d', days: 63, description: 'Swing / Trimestral estándar' },
+  { label: '252d', days: 252, description: 'Estructural / Macro anual' },
+]
 
 export default function TopologyModule() {
+  const { override } = useServiceStatusStore()
   const [report, setReport] = useState<TopologyReport | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [syncing, setSyncing] = useState(false)
   const [symbolInput, setSymbolInput] = useState('')
-  const [symbols, setSymbols] = useState<string[]>(DEFAULT_SYMBOLS)
+  const [symbols, setSymbols] = useState<string[]>(PRESETS[0].symbols)
+  const [windowDays, setWindowDays] = useState<number>(63)
+  const [activeTab, setActiveTab] = useState<'network' | 'heatmap' | 'rankings'>('network')
 
-  const fetchAnalysis = useCallback(async (symList: string[]) => {
+  const fetchAnalysis = useCallback(async (symList: string[], windowSize: number) => {
     setLoading(true)
     setError(null)
     try {
-      const result = await commands.runAnalysis('topology', symList, {})
-      setReport(result as unknown as TopologyReport)
+      const result = await commands.runAnalysis<TopologyReport>('topology', symList, {
+        window: windowSize,
+      })
+      setReport(result)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error running topology analysis')
     } finally {
@@ -46,9 +47,22 @@ export default function TopologyModule() {
     }
   }, [])
 
+  const handleDownloadCurrentSymbols = async () => {
+    setSyncing(true)
+    setError(null)
+    try {
+      await commands.resyncMarketData(symbols, '1y')
+      await fetchAnalysis(symbols, windowDays)
+    } catch (e) {
+      setError(`Error al descargar cotizaciones para topología: ${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+      setSyncing(false)
+    }
+  }
+
   useEffect(() => {
-    fetchAnalysis(DEFAULT_SYMBOLS)
-  }, [fetchAnalysis])
+    fetchAnalysis(symbols, windowDays)
+  }, [fetchAnalysis, symbols, windowDays])
 
   const handleAddSymbol = () => {
     const trimmed = symbolInput.trim().toUpperCase()
@@ -60,14 +74,16 @@ export default function TopologyModule() {
     const newSymbols = [...symbols, trimmed]
     setSymbols(newSymbols)
     setSymbolInput('')
-    fetchAnalysis(newSymbols)
   }
 
   const handleRemoveSymbol = (sym: string) => {
     const newSymbols = symbols.filter((s) => s !== sym)
     if (newSymbols.length === 0) return
     setSymbols(newSymbols)
-    fetchAnalysis(newSymbols)
+  }
+
+  const handleSelectPreset = (presetSymbols: string[]) => {
+    setSymbols(presetSymbols)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -78,104 +94,246 @@ export default function TopologyModule() {
 
   return (
     <div style={styles.container}>
+      {/* Module Header */}
       <div style={styles.header}>
-        <h1 style={styles.title}>📈 Market Topology</h1>
+        <div style={styles.titleRow}>
+          <h1 style={styles.title}>📈 Market Topology</h1>
+          <Badge variant="primary">Redes &amp; Clustering HRP</Badge>
+          {override === 'Real' ? (
+            <span
+              style={{
+                fontSize: '0.72rem',
+                fontWeight: 700,
+                fontFamily: 'monospace',
+                padding: '2px 8px',
+                borderRadius: 'var(--radius-sm)',
+                backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                border: '1px solid rgba(16, 185, 129, 0.35)',
+                color: 'var(--signal-bullish)',
+              }}
+            >
+              🟢 MODO REAL
+            </span>
+          ) : (
+            <span
+              style={{
+                fontSize: '0.72rem',
+                fontWeight: 700,
+                fontFamily: 'monospace',
+                padding: '2px 8px',
+                borderRadius: 'var(--radius-sm)',
+                backgroundColor: 'rgba(245, 158, 11, 0.15)',
+                border: '1px solid rgba(245, 158, 11, 0.35)',
+                color: 'var(--signal-warning)',
+              }}
+            >
+              ⚠️ SIMULACIÓN
+            </span>
+          )}
+        </div>
         <p style={styles.subtitle}>
-          Momentum rankings, cross-asset correlations, and market regime detection
+          Estructura geométrica del mercado: Árbol de Expansión Mínima (MST de Mantegna), Hubs de
+          transmisión sistémica y quasi-diagonalización HRP para rebalanceo óptimo.
         </p>
       </div>
 
-      {/* Symbol Input */}
-      <div style={styles.symbolBar}>
-        <div style={styles.inputGroup}>
-          <input
-            type="text"
-            value={symbolInput}
-            onChange={(e) => setSymbolInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Add symbol (e.g. AAPL)"
-            style={styles.input}
-          />
-          <button onClick={handleAddSymbol} style={styles.addBtn}>
-            Add
-          </button>
-        </div>
-        <div style={styles.symbolTags}>
-          {symbols.map((sym) => (
-            <span key={sym} style={styles.symbolTag}>
-              {sym}
-              <button
-                onClick={() => handleRemoveSymbol(sym)}
-                style={styles.removeBtn}
-                title={`Remove ${sym}`}
-              >
-                ×
-              </button>
-            </span>
-          ))}
-        </div>
-      </div>
+      {/* Universe & Parameters Control Bar */}
+      <Card variant="filled" style={styles.controlCard}>
+        {/* Presets Row */}
+        <div style={styles.presetsRow}>
+          <span style={styles.controlSectionLabel}>PRESETS RÁPIDOS:</span>
+          <div style={styles.presetButtons}>
+            {PRESETS.map((p) => {
+              const isActive =
+                symbols.length === p.symbols.length &&
+                symbols.every((s, i) => s === p.symbols[i])
+              return (
+                <Button
+                  key={p.label}
+                  size="sm"
+                  variant={isActive ? 'primary' : 'outline'}
+                  onClick={() => handleSelectPreset(p.symbols)}
+                >
+                  {p.label}
+                </Button>
+              )
+            })}
+          </div>
 
-      {/* Loading */}
+          {/* Time Horizon Selector */}
+          <div style={styles.windowSelector}>
+            <span style={styles.controlSectionLabel}>HORIZONTE:</span>
+            <div style={styles.windowButtonGroup}>
+              {WINDOWS.map((w) => (
+                <button
+                  key={w.days}
+                  style={{
+                    ...styles.windowBtn,
+                    ...(windowDays === w.days ? styles.windowBtnActive : {}),
+                  }}
+                  onClick={() => setWindowDays(w.days)}
+                  title={w.description}
+                >
+                  {w.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Symbol Input & Tags */}
+        <div style={styles.symbolInputRow}>
+          <div style={styles.inputGroup}>
+            <input
+              type="text"
+              value={symbolInput}
+              onChange={(e) => setSymbolInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Agregar ticker (e.g. NVDA, ETH)..."
+              style={styles.input}
+            />
+            <Button size="sm" onClick={handleAddSymbol} style={styles.addBtn}>
+              + Agregar
+            </Button>
+          </div>
+
+          <div style={styles.symbolTags}>
+            {symbols.map((sym) => (
+              <span key={sym} style={styles.symbolTag}>
+                {sym}
+                <button
+                  onClick={() => handleRemoveSymbol(sym)}
+                  style={styles.removeBtn}
+                  title={`Eliminar ${sym}`}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        </div>
+      </Card>
+
+      {/* Loading State */}
       {loading && (
         <div style={styles.loading}>
           <div style={styles.spinner} />
-          <span>Analyzing market topology...</span>
+          <span>Calculando topología, distancias de Mantegna y grafo MST...</span>
         </div>
       )}
 
-      {/* Error */}
+      {/* Error State */}
       {error && (
         <div style={styles.error}>
           <span style={{ fontSize: 24 }}>⚠️</span>
-          <div>
-            <strong>Analysis Error</strong>
-            <p style={{ margin: 0 }}>{error}</p>
+          <div style={{ flex: 1 }}>
+            <strong>Error de análisis topológico</strong>
+            <p style={{ margin: 0, fontSize: 13 }}>{error}</p>
           </div>
-          <button onClick={() => fetchAnalysis(symbols)} style={styles.retryBtn}>
-            Retry
-          </button>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <Button
+              size="sm"
+              variant="primary"
+              onClick={handleDownloadCurrentSymbols}
+              isLoading={syncing}
+            >
+              {syncing ? 'Descargando...' : '📥 Descargar cotizaciones reales'}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => fetchAnalysis(symbols, windowDays)}
+            >
+              Reintentar
+            </Button>
+          </div>
         </div>
       )}
 
-      {/* No data */}
-      {!loading && !error && !report && (
-        <div style={styles.empty}>
-          <p>No data available. Ensure market data is loaded for the selected symbols.</p>
-          <button onClick={() => fetchAnalysis(symbols)} style={styles.retryBtn}>
-            Load Analysis
-          </button>
-        </div>
-      )}
-
-      {/* Report */}
-      {report && (
+      {/* Main Analysis Dashboard */}
+      {!loading && report && (
         <div style={styles.content}>
-          <div style={styles.meta}>
-            <span style={styles.metaItem}>
-              Universe: <strong>{report.universe_size} assets</strong>
-            </span>
-            <span style={styles.metaItem}>
-              Date: <strong>{report.date}</strong>
-            </span>
+          {/* Executive Topologic KPIs */}
+          <TopologyKpis
+            metrics={report.metrics}
+            centrality={report.centrality}
+            regimes={report.regimes}
+          />
+
+          {/* Navigation Tabs */}
+          <div style={styles.tabNav}>
+            <button
+              onClick={() => setActiveTab('network')}
+              style={{
+                ...styles.tabBtn,
+                ...(activeTab === 'network' ? styles.tabBtnActive : {}),
+              }}
+            >
+              🌐 Red Topológica &amp; Hubs (MST)
+            </button>
+            <button
+              onClick={() => setActiveTab('heatmap')}
+              style={{
+                ...styles.tabBtn,
+                ...(activeTab === 'heatmap' ? styles.tabBtnActive : {}),
+              }}
+            >
+              📊 Matriz de Clústeres (HRP)
+            </button>
+            <button
+              onClick={() => setActiveTab('rankings')}
+              style={{
+                ...styles.tabBtn,
+                ...(activeTab === 'rankings' ? styles.tabBtnActive : {}),
+              }}
+            >
+              📈 Momentum &amp; Regímenes
+            </button>
           </div>
 
-          {/* Rankings Table */}
-          <RankingsTable rankings={report.rankings} />
+          {/* Tab 1: Interactive Network Graph */}
+          {activeTab === 'network' && (
+            <TopologyNetworkGraph
+              symbols={report.correlations.symbols}
+              mstEdges={report.mst_edges}
+              centrality={report.centrality}
+              rankings={report.rankings}
+              correlations={report.correlations}
+            />
+          )}
 
-          {/* Correlation Heatmap */}
-          <CorrelationHeatmap correlations={report.correlations} />
+          {/* Tab 2: Reorderable Heatmap with HRP Clusters */}
+          {activeTab === 'heatmap' && (
+            <CorrelationHeatmap
+              correlations={report.correlations}
+              hrpOrder={report.hrp_order}
+              windowDays={windowDays}
+            />
+          )}
 
-          {/* Regime Indicator */}
-          <RegimeIndicator regimes={report.regimes} />
+          {/* Tab 3: Momentum Rankings & Regimes */}
+          {activeTab === 'rankings' && (
+            <div style={styles.rankingsSection}>
+              <RankingsTable rankings={report.rankings} />
+              <RegimeIndicator regimes={report.regimes} />
+            </div>
+          )}
 
-          <button
-            onClick={() => fetchAnalysis(symbols)}
-            style={styles.refreshBtn}
-            disabled={loading}
-          >
-            🔄 {loading ? 'Analyzing...' : 'Refresh Analysis'}
-          </button>
+          {/* Footer refresh status */}
+          <div style={styles.footerRow}>
+            <span style={styles.footerMeta}>
+              Universo: <strong>{report.universe_size} activos</strong> · Fecha de corte:{' '}
+              <strong>{report.date}</strong> · Ventana: <strong>{windowDays} días</strong>
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => fetchAnalysis(symbols, windowDays)}
+              disabled={loading}
+            >
+              🔄 Actualizar Datos
+            </Button>
+          </div>
         </div>
       )}
     </div>
@@ -185,91 +343,194 @@ export default function TopologyModule() {
 const styles: Record<string, React.CSSProperties> = {
   container: {
     padding: '24px',
-    maxWidth: 960,
+    maxWidth: 1040,
     margin: '0 auto',
   },
   header: {
-    marginBottom: 24,
+    marginBottom: '20px',
+  },
+  titleRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    marginBottom: '6px',
   },
   title: {
-    fontSize: 28,
+    fontSize: '26px',
     fontWeight: 700,
     margin: 0,
+    color: 'var(--text-primary)',
   },
   subtitle: {
     color: 'var(--text-secondary)',
-    margin: '8px 0 0',
+    fontSize: '13px',
+    lineHeight: 1.5,
+    margin: 0,
   },
-  symbolBar: {
-    backgroundColor: 'var(--bg-secondary)',
+  controlCard: {
+    padding: '16px',
+    marginBottom: '24px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '14px',
+  },
+  presetsRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: '12px',
+  },
+  controlSectionLabel: {
+    fontSize: '10px',
+    fontWeight: 700,
+    letterSpacing: '0.05em',
+    color: 'var(--text-secondary)',
+    fontFamily: 'var(--font-mono, monospace)',
+  },
+  presetButtons: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  windowSelector: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    marginLeft: 'auto',
+  },
+  windowButtonGroup: {
+    display: 'inline-flex',
     borderRadius: 'var(--radius)',
-    padding: 16,
-    marginBottom: 20,
-    boxShadow: 'var(--shadow)',
+    overflow: 'hidden',
+    border: '1px solid var(--border)',
+  },
+  windowBtn: {
+    padding: '4px 10px',
+    fontSize: '11px',
+    fontWeight: 600,
+    border: 'none',
+    backgroundColor: 'var(--bg-secondary)',
+    color: 'var(--text-secondary)',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+  },
+  windowBtnActive: {
+    backgroundColor: 'var(--accent)',
+    color: '#ffffff',
+  },
+  symbolInputRow: {
+    display: 'flex',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: '12px',
+    borderTop: '1px solid rgba(255, 255, 255, 0.06)',
+    paddingTop: '12px',
   },
   inputGroup: {
     display: 'flex',
-    gap: 8,
-    marginBottom: 12,
+    gap: '6px',
+    flexShrink: 0,
   },
   input: {
-    flex: 1,
-    padding: '8px 12px',
+    padding: '6px 12px',
     border: '1px solid var(--border)',
     borderRadius: 'var(--radius)',
-    fontSize: 14,
+    fontSize: '13px',
     backgroundColor: 'var(--bg-primary)',
     color: 'var(--text-primary)',
     outline: 'none',
+    width: '210px',
   },
   addBtn: {
-    padding: '8px 16px',
-    backgroundColor: 'var(--accent)',
-    color: '#fff',
-    border: 'none',
-    borderRadius: 'var(--radius)',
-    cursor: 'pointer',
-    fontSize: 14,
     fontWeight: 600,
   },
   symbolTags: {
     display: 'flex',
     flexWrap: 'wrap',
-    gap: 6,
+    gap: '6px',
+    flex: 1,
   },
   symbolTag: {
     display: 'inline-flex',
     alignItems: 'center',
-    gap: 4,
-    padding: '4px 10px',
+    gap: '6px',
+    padding: '3px 8px',
     backgroundColor: 'var(--bg-primary)',
     border: '1px solid var(--border)',
-    borderRadius: 16,
-    fontSize: 13,
-    fontWeight: 600,
+    borderRadius: '16px',
+    fontSize: '12px',
+    fontWeight: 700,
     color: 'var(--text-primary)',
+    fontFamily: 'var(--font-mono, monospace)',
   },
   removeBtn: {
     border: 'none',
     background: 'transparent',
     cursor: 'pointer',
-    fontSize: 16,
+    fontSize: '14px',
     color: 'var(--text-secondary)',
     padding: 0,
     lineHeight: 1,
     display: 'flex',
     alignItems: 'center',
   },
+  content: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '16px',
+  },
+  tabNav: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    borderBottom: '1px solid var(--border)',
+    paddingBottom: '8px',
+  },
+  tabBtn: {
+    padding: '8px 16px',
+    fontSize: '13px',
+    fontWeight: 600,
+    backgroundColor: 'transparent',
+    border: 'none',
+    borderRadius: 'var(--radius)',
+    color: 'var(--text-secondary)',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+  },
+  tabBtnActive: {
+    backgroundColor: 'var(--bg-secondary)',
+    color: 'var(--accent)',
+    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.25)',
+  },
+  rankingsSection: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '20px',
+  },
+  footerRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: '16px',
+    borderTop: '1px solid var(--border)',
+    marginTop: '12px',
+  },
+  footerMeta: {
+    fontSize: '12px',
+    color: 'var(--text-secondary)',
+  },
   loading: {
     display: 'flex',
     alignItems: 'center',
-    gap: 12,
-    padding: 32,
+    gap: '12px',
+    padding: '48px',
     justifyContent: 'center',
+    color: 'var(--text-secondary)',
   },
   spinner: {
-    width: 24,
-    height: 24,
+    width: '24px',
+    height: '24px',
     border: '3px solid var(--border)',
     borderTopColor: 'var(--accent)',
     borderRadius: '50%',
@@ -278,53 +539,12 @@ const styles: Record<string, React.CSSProperties> = {
   error: {
     display: 'flex',
     alignItems: 'center',
-    gap: 12,
-    padding: 16,
-    backgroundColor: '#ffebee',
+    gap: '12px',
+    padding: '16px',
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    border: '1px solid rgba(239, 68, 68, 0.3)',
     borderRadius: 'var(--radius)',
-    color: '#c62828',
-  },
-  retryBtn: {
-    marginLeft: 'auto',
-    padding: '8px 16px',
-    border: '1px solid #c62828',
-    borderRadius: 'var(--radius)',
-    backgroundColor: 'transparent',
-    cursor: 'pointer',
-    color: '#c62828',
-  },
-  empty: {
-    textAlign: 'center',
-    padding: 48,
-    color: 'var(--text-secondary)',
-  },
-  content: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 20,
-  },
-  meta: {
-    display: 'flex',
-    gap: 24,
-    fontSize: 13,
-    color: 'var(--text-secondary)',
-  },
-  metaItem: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 4,
-  },
-  refreshBtn: {
-    padding: '12px 24px',
-    backgroundColor: 'var(--accent)',
-    color: '#fff',
-    border: 'none',
-    borderRadius: 'var(--radius)',
-    cursor: 'pointer',
-    fontSize: 14,
-    fontWeight: 600,
-    alignSelf: 'center',
-    opacity: 1,
-    transition: 'opacity 0.2s',
+    color: 'var(--signal-bearish)',
+    marginBottom: '20px',
   },
 }

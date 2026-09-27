@@ -20,7 +20,28 @@ const CORRELATION_WINDOW: usize = 63;
 ///
 /// A `CorrelationMatrix` with symmetric N×N correlation values on the
 /// diagonal (always 1.0) and off-diagonal Pearson correlations in [-1, 1].
+/// Compute the full N×N correlation matrix for the universe using default 63-day window.
+#[allow(dead_code)]
 pub fn compute_correlations(price_data: &[(String, Vec<f64>)]) -> CorrelationMatrix {
+    compute_correlations_with_window(price_data, CORRELATION_WINDOW)
+}
+
+/// Compute the full N×N correlation matrix for the universe with a specified rolling window.
+///
+/// # Arguments
+///
+/// * `price_data` — Slice of `(symbol, closes)` tuples. Each close series
+///   must be chronological (oldest first).
+/// * `window` — Number of trading days to include in the correlation window.
+///
+/// # Returns
+///
+/// A `CorrelationMatrix` with symmetric N×N correlation values on the
+/// diagonal (always 1.0) and off-diagonal Pearson correlations in [-1, 1].
+pub fn compute_correlations_with_window(
+    price_data: &[(String, Vec<f64>)],
+    window: usize,
+) -> CorrelationMatrix {
     let symbols: Vec<String> = price_data.iter().map(|(s, _)| s.clone()).collect();
     let n = symbols.len();
 
@@ -37,7 +58,8 @@ pub fn compute_correlations(price_data: &[(String, Vec<f64>)]) -> CorrelationMat
             if i == j {
                 correlations[i][j] = 1.0;
             } else {
-                correlations[i][j] = pearson_correlation(&log_returns[i], &log_returns[j]);
+                correlations[i][j] =
+                    pearson_correlation_window(&log_returns[i], &log_returns[j], window);
             }
         }
     }
@@ -68,15 +90,15 @@ fn compute_daily_log_returns(closes: &[f64]) -> Vec<f64> {
         .collect()
 }
 
-/// Compute Pearson correlation coefficient between two return series.
-///
-/// Uses a rolling window of the last `CORRELATION_WINDOW` overlapping
-/// observations. If either series has fewer than 2 observations within
-/// the window, returns 0.0.
-///
-/// r = (n·Σxy − Σx·Σy) / √((n·Σx² − (Σx)²)(n·Σy² − (Σy)²))
+/// Compute Pearson correlation coefficient between two return series with default window.
 fn pearson_correlation(a: &[f64], b: &[f64]) -> f64 {
-    let n = CORRELATION_WINDOW.min(a.len()).min(b.len());
+    pearson_correlation_window(a, b, CORRELATION_WINDOW)
+}
+
+/// Compute Pearson correlation coefficient between two return series with specified window.
+fn pearson_correlation_window(a: &[f64], b: &[f64], window: usize) -> f64 {
+    let effective_window = window.max(2);
+    let n = effective_window.min(a.len()).min(b.len());
 
     if n < 2 {
         return 0.0;
@@ -95,7 +117,8 @@ fn pearson_correlation(a: &[f64], b: &[f64]) -> f64 {
     let sum_y2: f64 = window_b.iter().map(|y| y * y).sum();
 
     let numerator = n as f64 * sum_xy - sum_x * sum_y;
-    let denominator = ((n as f64 * sum_x2 - sum_x * sum_x) * (n as f64 * sum_y2 - sum_y * sum_y)).sqrt();
+    let denominator =
+        ((n as f64 * sum_x2 - sum_x * sum_x) * (n as f64 * sum_y2 - sum_y * sum_y)).sqrt();
 
     if denominator < 1e-10 {
         0.0

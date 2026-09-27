@@ -8,6 +8,7 @@
 //! - Market regime detection (risk-on, risk-off, divergent, normal)
 
 mod correlations;
+pub mod graph;
 mod ranking;
 mod regimes;
 pub mod types;
@@ -18,7 +19,10 @@ use async_trait::async_trait;
 use anyhow::Result;
 use serde_json::Value;
 
-pub use types::{AssetRanking, CorrelationMatrix, RegimeInfo, TopologyReport};
+pub use types::{
+    AssetRanking, CorrelationMatrix, MstEdge, NodeCentrality, RegimeInfo, TopologyMetrics,
+    TopologyReport,
+};
 
 /// Default symbols used when the caller provides an empty list.
 const DEFAULT_SYMBOLS: &[&str] = &["SPY", "QQQ", "TLT", "GLD", "DBC", "BTC"];
@@ -56,6 +60,14 @@ impl AnalysisModule for TopologyModule {
         let from = (today - chrono::Duration::days(730)).format("%Y-%m-%d").to_string();
         let to = today.format("%Y-%m-%d").to_string();
 
+        // Extract window parameter if provided, otherwise default to 63.
+        let window = ctx
+            .parameters
+            .get("window")
+            .and_then(|w| w.as_u64())
+            .map(|w| w as usize)
+            .unwrap_or(63);
+
         // Determine which symbols to analyze.
         let symbols: Vec<&str> = if ctx.symbols.is_empty() {
             DEFAULT_SYMBOLS.to_vec()
@@ -86,8 +98,19 @@ impl AnalysisModule for TopologyModule {
         // Compute rankings.
         let rankings = ranking::compute_rankings(&price_data);
 
-        // Compute correlation matrices.
-        let correlations = correlations::compute_correlations(&price_data);
+        // Compute correlation matrices using configured window.
+        let correlations = correlations::compute_correlations_with_window(&price_data, window);
+
+        // Compute network topology (MST, centrality, macro-metrics, HRP order).
+        let mst_edges = graph::compute_mst(&correlations);
+        let centrality = graph::compute_centrality(&correlations.symbols, &mst_edges);
+        let metrics = Some(graph::compute_topology_metrics(
+            &correlations,
+            &mst_edges,
+            &centrality,
+            window,
+        ));
+        let hrp_order = graph::compute_hrp_order(&correlations);
 
         // Detect market regimes.
         let market_corrs = correlations::correlation_to_market(&price_data);
@@ -99,6 +122,10 @@ impl AnalysisModule for TopologyModule {
             rankings,
             correlations,
             regimes,
+            mst_edges,
+            centrality,
+            metrics,
+            hrp_order,
         };
 
         Ok(Box::new(report))
@@ -191,6 +218,34 @@ mod tests {
                     affected_symbols: Vec::new(),
                 },
             ],
+            mst_edges: vec![MstEdge {
+                source: "SPY".to_string(),
+                target: "QQQ".to_string(),
+                weight: 0.54,
+                correlation: 0.85,
+            }],
+            centrality: vec![
+                NodeCentrality {
+                    symbol: "SPY".to_string(),
+                    degree: 1,
+                    betweenness: 0.0,
+                    is_hub: true,
+                },
+                NodeCentrality {
+                    symbol: "QQQ".to_string(),
+                    degree: 1,
+                    betweenness: 0.0,
+                    is_hub: false,
+                },
+            ],
+            metrics: Some(TopologyMetrics {
+                normalized_tree_length: 0.54,
+                hub_symbol: "SPY".to_string(),
+                avg_correlation: 0.85,
+                stress_status: "Contracción / Estrés Elevado".to_string(),
+                window_days: 63,
+            }),
+            hrp_order: vec!["SPY".to_string(), "QQQ".to_string()],
         };
 
         let json = serde_json::to_value(&report).unwrap();
@@ -198,6 +253,10 @@ mod tests {
         assert_eq!(json["rankings"][0]["symbol"], "SPY");
         assert_eq!(json["correlations"]["symbols"][0], "SPY");
         assert_eq!(json["regimes"][0]["regime"], "risk-on");
+        assert_eq!(json["mst_edges"][0]["source"], "SPY");
+        assert_eq!(json["centrality"][0]["symbol"], "SPY");
+        assert_eq!(json["metrics"]["hub_symbol"], "SPY");
+        assert_eq!(json["hrp_order"][0], "SPY");
     }
 
     #[test]
@@ -211,6 +270,10 @@ mod tests {
                 correlations: vec![],
             },
             regimes: vec![],
+            mst_edges: vec![],
+            centrality: vec![],
+            metrics: None,
+            hrp_order: vec![],
         };
 
         assert_eq!(report.module_name(), "topology");
