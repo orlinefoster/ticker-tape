@@ -52,34 +52,46 @@ impl AnalysisModule for RelativePerfModule {
         let from = (today - chrono::Duration::days(730)).format("%Y-%m-%d").to_string();
         let to = today.format("%Y-%m-%d").to_string();
 
-        let symbols: Vec<&str> = if ctx.symbols.is_empty() {
-            DEFAULT_SYMBOLS.to_vec()
+        let benchmark = ctx
+            .parameters
+            .get("benchmark")
+            .and_then(|v| v.as_str())
+            .unwrap_or(DEFAULT_BENCHMARK);
+
+        let mut symbols: Vec<String> = if ctx.symbols.is_empty() {
+            DEFAULT_SYMBOLS.iter().map(|&s| s.to_string()).collect()
         } else {
-            ctx.symbols.iter().map(|s| s.as_str()).collect()
+            ctx.symbols.clone()
         };
 
-        // Fetch price data for each symbol, auto-fetching/seeding if cache miss
+        if !symbols.iter().any(|s| s.eq_ignore_ascii_case(benchmark)) {
+            symbols.push(benchmark.to_string());
+        }
+
+        // Fetch price data for each symbol, auto-fetching authentic data if cache miss
         let mut price_data: Vec<(String, Vec<f64>)> = Vec::new();
+        let mut missing_symbols: Vec<String> = Vec::new();
         let from_date = today - chrono::Duration::days(730);
 
-        for &symbol in &symbols {
+        for symbol in &symbols {
             let mut bars = match MarketDataRepository::get_bars(&ctx.db, symbol, &from, &to).await {
                 Ok(b) if !b.is_empty() => b,
                 _ => Vec::new(),
             };
 
             if bars.is_empty() {
-                // Try fetching from external provider first
+                // Try fetching authentic data from external provider (Yahoo Finance / Binance)
                 match crate::trading::market_data::fetch_historical_data(symbol, from_date, today).await {
                     Ok(fetched) if !fetched.is_empty() => {
                         let _ = MarketDataRepository::upsert_bars(&ctx.db, &fetched).await;
                         bars = fetched;
                     }
+                    Err(e) => {
+                        tracing::warn!("[RelativePerf] No se pudieron descargar datos reales para {}: {}. Omitiendo sin inyectar mock.", symbol, e);
+                        missing_symbols.push(symbol.to_string());
+                    }
                     _ => {
-                        // Generate mock fallback bars to populate DB cache
-                        let mock_bars = generate_mock_bars(symbol, from_date, today);
-                        let _ = MarketDataRepository::upsert_bars(&ctx.db, &mock_bars).await;
-                        bars = mock_bars;
+                        missing_symbols.push(symbol.to_string());
                     }
                 }
             }
@@ -91,10 +103,9 @@ impl AnalysisModule for RelativePerfModule {
         }
 
         if price_data.is_empty() {
-            anyhow::bail!("Relative performance requires at least one symbol with data");
+            anyhow::bail!("Rendimiento relativo requiere al menos un activo con datos reales disponibles");
         }
 
-        let benchmark = DEFAULT_BENCHMARK;
         let rankings = ranking::compute_relative_strength(&price_data, benchmark);
 
         let rotation_score = if rankings.len() > 1 {
@@ -117,6 +128,7 @@ impl AnalysisModule for RelativePerfModule {
             top_performer: top,
             bottom_performer: bottom,
             rotation_score,
+            missing_symbols,
         };
 
         Ok(Box::new(report))
@@ -132,47 +144,6 @@ impl ModuleOutput for RelativePerfReport {
     fn module_name(&self) -> &str {
         "relative-perf"
     }
-}
-
-/// Helper generator for fallback mock bars when external provider fails / is offline.
-fn generate_mock_bars(symbol: &str, from: chrono::NaiveDate, to: chrono::NaiveDate) -> Vec<crate::trading::models::OHLCVBar> {
-    use chrono::Datelike;
-    let mut bars = Vec::new();
-    let mut curr = from;
-    let sym_hash: usize = symbol.bytes().map(|b| b as usize).sum();
-    let mut price = match symbol {
-        "BTC" => 65000.0,
-        "NVDA" => 125.0,
-        "AAPL" => 220.0,
-        "GLD" => 230.0,
-        "TLT" => 95.0,
-        "QQQ" => 480.0,
-        _ => 500.0,
-    };
-
-    let mut day_idx = 0;
-    while curr <= to {
-        let weekday = curr.weekday();
-        if weekday != chrono::Weekday::Sat && weekday != chrono::Weekday::Sun {
-            let seed = (sym_hash * 1000 + day_idx) as f64;
-            let pseudo_rnd = (seed.sin() * 10000.0).fract();
-            let change = (pseudo_rnd - 0.485) * (price * 0.015);
-            price = (price + change).max(5.0);
-
-            bars.push(crate::trading::models::OHLCVBar {
-                symbol: symbol.to_string(),
-                date: curr,
-                open: (price - 0.5 * pseudo_rnd.abs()).max(1.0),
-                high: price + 1.2 * pseudo_rnd.abs(),
-                low: (price - 1.0 * pseudo_rnd.abs()).max(0.5),
-                close: price,
-                volume: 5000000.0 + pseudo_rnd.abs() * 1000000.0,
-            });
-        }
-        curr += chrono::Duration::days(1);
-        day_idx += 1;
-    }
-    bars
 }
 
 // ---------------------------------------------------------------------------
@@ -201,5 +172,24 @@ mod tests {
     #[test]
     fn test_default_symbols_contains_benchmark() {
         assert!(DEFAULT_SYMBOLS.contains(&DEFAULT_BENCHMARK));
+    }
+
+    #[test]
+    fn test_compute_relative_strength_with_btc_benchmark() {
+        let btc_closes = vec![60000.0, 61000.0, 62000.0, 63000.0, 64000.0, 65000.0];
+        let eth_closes = vec![3000.0, 3100.0, 3300.0, 3400.0, 3600.0, 3900.0]; // Outperforming BTC
+        let sol_closes = vec![150.0, 149.0, 148.0, 147.0, 146.0, 145.0]; // Underperforming BTC
+
+        let price_data = vec![
+            ("BTC".to_string(), btc_closes),
+            ("ETH".to_string(), eth_closes),
+            ("SOL".to_string(), sol_closes),
+        ];
+
+        let rankings = ranking::compute_relative_strength(&price_data, "BTC");
+        assert_eq!(rankings.len(), 2);
+        // ETH has higher returns than BTC and SOL
+        assert_eq!(rankings[0].symbol, "ETH");
+        assert!(rankings[0].composite_rs > rankings[1].composite_rs);
     }
 }

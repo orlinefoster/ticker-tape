@@ -40,5 +40,7 @@ pub struct RelativePerfReport {
     pub top_performer: String,
     pub bottom_performer: String,
     pub rotation_score: f64, // dispersion of RS scores (high = rotation happening)
+    #[serde(default)]
+    pub missing_symbols: Vec<String>,
 }
 
