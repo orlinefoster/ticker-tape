@@ -13,6 +13,7 @@ import {
 } from 'lightweight-charts';
 import { commands, type OHLCVBar } from '@/lib/tauri';
 import { useUIStore } from '@/store/uiStore';
+import { useServiceStatusStore } from '@/store/serviceStatusStore';
 import {
   isSyntheticSymbol,
   getSyntheticBars,
@@ -125,6 +126,7 @@ export default function MarketChartModule() {
 
   const [bars, setBars] = useState<OHLCVBar[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [hoveredBar, setHoveredBar] = useState<OHLCVBar | null>(null);
   const [isMockData, setIsMockData] = useState(false);
   const [providerUsed, setProviderUsed] = useState<string>('');
@@ -166,6 +168,7 @@ export default function MarketChartModule() {
   // Load Market Data & Waves
   const loadMarketData = async (sym: string, tf: string) => {
     setLoading(true);
+    setError(null);
     try {
       if (isSyntheticSymbol(sym)) {
         const synthetic = getSyntheticBars(sym);
@@ -175,6 +178,7 @@ export default function MarketChartModule() {
         setLoading(false);
         return;
       }
+      const isReal = useServiceStatusStore.getState().override === 'Real';
       const diag = await commands.testProviderFetch(sym, tf, false, 'auto');
       const fetched = await commands.fetchMarketData(sym, tf);
       if (fetched && fetched.length > 0) {
@@ -185,40 +189,61 @@ export default function MarketChartModule() {
           (diag.provider_used || '').toLowerCase().includes('synthetic');
         setIsMockData(isMock);
       } else {
+        if (isReal) {
+          setBars([]);
+          setError(`No hay datos históricos reales para ${sym} (${tf}). Por favor verifica la conexión o resincroniza.`);
+          setProviderUsed('sin-datos-reales');
+          setIsMockData(false);
+        } else {
+          setBars(generateMockBars(sym, tf));
+          setProviderUsed('browser-mock-generator');
+          setIsMockData(true);
+        }
+      }
+    } catch (e) {
+      const isReal = useServiceStatusStore.getState().override === 'Real';
+      if (isReal) {
+        setBars([]);
+        setError(`Error al consultar ${sym}: ${e instanceof Error ? e.message : String(e)}`);
+        setProviderUsed('sin-datos-reales');
+        setIsMockData(false);
+      } else {
         setBars(generateMockBars(sym, tf));
         setProviderUsed('browser-mock-generator');
         setIsMockData(true);
       }
-    } catch {
-      setBars(generateMockBars(sym, tf));
-      setProviderUsed('browser-mock-generator');
-      setIsMockData(true);
     } finally {
       setLoading(false);
     }
   };
 
   const loadElliottData = async (sym: string) => {
+    const isReal = useServiceStatusStore.getState().override === 'Real';
     try {
       const labels = (await commands.loadWaveLabels(sym)) as WaveLabel[];
       if (labels && labels.length > 0) {
         setWaveLabels(labels);
       } else {
-        const fresh = (await commands.recountWaves(sym)) as WaveLabel[];
-        setWaveLabels(fresh || generateMockWaves(sym));
+        try {
+          const fresh = (await commands.recountWaves(sym)) as WaveLabel[];
+          setWaveLabels(fresh || (isReal ? [] : generateMockWaves(sym)));
+        } catch {
+          setWaveLabels(isReal ? [] : generateMockWaves(sym));
+        }
       }
     } catch {
-      setWaveLabels(generateMockWaves(sym));
+      setWaveLabels(isReal ? [] : generateMockWaves(sym));
     }
   };
 
   const handleRecountWaves = async () => {
+    const isReal = useServiceStatusStore.getState().override === 'Real';
     setRecountingWaves(true);
     try {
       const fresh = (await commands.recountWaves(symbol)) as WaveLabel[];
-      setWaveLabels(fresh || generateMockWaves(symbol));
+      setWaveLabels(fresh || (isReal ? [] : generateMockWaves(symbol)));
     } catch {
-      setWaveLabels(generateMockWaves(symbol));
+      setWaveLabels(isReal ? [] : generateMockWaves(symbol));
     } finally {
       setRecountingWaves(false);
     }
@@ -887,6 +912,63 @@ export default function MarketChartModule() {
           {loading && (
             <div style={styles.tvLoadingOverlay}>
               <span>🔄 Cargando datos...</span>
+            </div>
+          )}
+
+          {error && !loading && (
+            <div
+              style={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                padding: '24px 32px',
+                backgroundColor: 'var(--bg-surface)',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius)',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '14px',
+                boxShadow: '0 12px 32px rgba(0,0,0,0.6)',
+                zIndex: 10,
+                fontFamily: 'monospace',
+                maxWidth: '480px',
+              }}
+            >
+              <span style={{ fontSize: '2rem' }}>⚠️</span>
+              <div style={{ color: 'var(--signal-warning)', fontWeight: 700, fontSize: '0.88rem', textAlign: 'center' }}>
+                {error}
+              </div>
+              <button
+                onClick={async () => {
+                  setLoading(true);
+                  try {
+                    await commands.resyncMarketData([symbol], timeframe === '1y' || timeframe === '2y' ? timeframe : '1y');
+                    await loadMarketData(symbol, timeframe);
+                  } catch (e) {
+                    setError(`Error al descargar: ${e instanceof Error ? e.message : String(e)}`);
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+                style={{
+                  padding: '8px 18px',
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
+                  backgroundColor: 'var(--accent)',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: 'var(--radius-sm)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                <span>📥</span>
+                <span>Descargar datos reales ahora</span>
+              </button>
             </div>
           )}
 

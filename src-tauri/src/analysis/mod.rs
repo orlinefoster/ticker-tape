@@ -50,9 +50,9 @@ pub trait ModuleOutput: Send + Sync {
 /// Register all available analysis modules
 pub fn available_modules() -> Vec<Box<dyn AnalysisModule>> {
     vec![
-        Box::new(intermarket::IntermarketModule::default()),
-        Box::new(topology::TopologyModule::default()),
-        Box::new(elliott_wave::ElliottWaveModule::default()),
-        Box::new(relative_perf::RelativePerfModule::default()),
+        Box::new(intermarket::IntermarketModule),
+        Box::new(topology::TopologyModule),
+        Box::new(elliott_wave::ElliottWaveModule),
+        Box::new(relative_perf::RelativePerfModule),
     ]
 }

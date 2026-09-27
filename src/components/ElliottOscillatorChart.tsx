@@ -5,10 +5,11 @@ interface ElliottOscillatorChartProps {
   bars: OHLCVBar[];
   symbol: string;
   height?: number;
+  cutoffDate?: string;
 }
 
-export function ElliottOscillatorChart({ bars, symbol, height = 220 }: ElliottOscillatorChartProps) {
-  // Calculate Elliott Oscillator (5, 35)
+export function ElliottOscillatorChart({ bars, symbol, height = 220, cutoffDate }: ElliottOscillatorChartProps) {
+  // Calculate Elliott Oscillator (5, 35) on full history, then filter by cutoffDate if provided
   const oscData = useMemo(() => {
     if (!bars || bars.length < 35) return [];
 
@@ -35,8 +36,13 @@ export function ElliottOscillatorChart({ bars, symbol, height = 220 }: ElliottOs
       });
     }
 
+    if (cutoffDate) {
+      const filtered = result.filter((r) => r.date >= cutoffDate);
+      if (filtered.length >= 2) return filtered;
+    }
+
     return result;
-  }, [bars]);
+  }, [bars, cutoffDate]);
 
   if (!oscData.length) {
     return (

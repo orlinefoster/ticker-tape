@@ -82,13 +82,25 @@ export interface CacheItem {
   max_date: string | null;
 }
 
+export interface SymbolCacheSummary {
+  symbol: string;
+  bar_count: number;
+  min_date: string | null;
+  max_date: string | null;
+}
+
+export interface ResyncResult {
+  synced: string[];
+  failed: [string, string][];
+}
+
 // Supabase Configuration Management
 export function getSupabaseConfig(): { url: string; key: string } {
   const url = typeof window !== 'undefined'
-    ? (localStorage.getItem('SUPABASE_URL') || (import.meta as any).env?.VITE_SUPABASE_URL || (import.meta as any).env?.NEXT_PUBLIC_SUPABASE_URL || '')
+    ? (localStorage.getItem('SUPABASE_URL') || import.meta.env.VITE_SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL || '')
     : '';
   const key = typeof window !== 'undefined'
-    ? (localStorage.getItem('SUPABASE_ANON_KEY') || (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || (import.meta as any).env?.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || '')
+    ? (localStorage.getItem('SUPABASE_ANON_KEY') || import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || '')
     : '';
   return { url: url.trim().replace(/\/$/, ''), key: key.trim() };
 }
@@ -634,6 +646,38 @@ export const invoke = async <T = any>(cmd: string, args?: Record<string, unknown
       return items as unknown as T;
     }
 
+    case 'purge_market_data': {
+      const symbols = (args?.symbols as string[]) || [];
+      if (symbols.length === 0) {
+        const size = browserCacheMap.size;
+        browserCacheMap.clear();
+        return size as unknown as T;
+      }
+      let count = 0;
+      for (const s of symbols) {
+        if (browserCacheMap.delete(s)) count++;
+      }
+      return count as unknown as T;
+    }
+
+    case 'get_market_data_summary': {
+      const items: SymbolCacheSummary[] = Array.from(browserCacheMap.entries()).map(([sym, bars]) => ({
+        symbol: sym,
+        bar_count: bars.length,
+        min_date: bars[0]?.date || null,
+        max_date: bars[bars.length - 1]?.date || null,
+      }));
+      return items as unknown as T;
+    }
+
+    case 'resync_market_data': {
+      const symbols = (args?.symbols as string[]) || [];
+      return {
+        synced: symbols,
+        failed: [],
+      } as unknown as T;
+    }
+
     default:
       return null as unknown as T;
   }
@@ -652,17 +696,17 @@ export const commands = {
   runBacktest: (symbol: string, strategy: string, params?: Record<string, unknown>): Promise<BacktestResult> =>
     invoke('run_backtest', { symbol, strategy, params: params ?? {} }),
 
-  runAnalysis: (module: string, symbols: string[], parameters?: Record<string, unknown>): Promise<unknown> =>
-    invoke('run_analysis', { module, symbols, parameters: parameters ?? {} }),
+  runAnalysis: <T = unknown>(module: string, symbols: string[], parameters?: Record<string, unknown>): Promise<T> =>
+    invoke<T>('run_analysis', { module, symbols, parameters: parameters ?? {} }),
 
-  loadWaveLabels: (symbol: string): Promise<unknown> =>
-    invoke('load_wave_labels', { symbol }),
+  loadWaveLabels: <T = unknown>(symbol: string): Promise<T> =>
+    invoke<T>('load_wave_labels', { symbol }),
 
   saveWaveLabels: (labels: unknown[]): Promise<number> =>
-    invoke('save_wave_labels', { labels }),
+    invoke<number>('save_wave_labels', { labels }),
 
-  recountWaves: (symbol: string): Promise<unknown> =>
-    invoke('recount_waves', { symbol }),
+  recountWaves: <T = unknown>(symbol: string): Promise<T> =>
+    invoke<T>('recount_waves', { symbol }),
 
   analyzeMarketAI: (symbol: string, model?: string): Promise<string> =>
     invoke('analyze_market_ai', { symbol, model }),
@@ -689,4 +733,13 @@ export const commands = {
 
   getCacheStats: (): Promise<CacheItem[]> =>
     invoke('get_cache_stats'),
+
+  purgeMarketData: (symbols: string[] = []): Promise<number> =>
+    invoke('purge_market_data', { symbols }),
+
+  getMarketDataSummary: (): Promise<SymbolCacheSummary[]> =>
+    invoke('get_market_data_summary'),
+
+  resyncMarketData: (symbols: string[], range: string = '1y'): Promise<ResyncResult> =>
+    invoke('resync_market_data', { symbols, range }),
 };

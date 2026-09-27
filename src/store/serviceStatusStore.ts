@@ -16,6 +16,21 @@ export interface ServiceStatusState {
   override: OverrideSetting;
   setOverride: (override: OverrideSetting) => void;
   pollStatus: () => Promise<void>;
+  isRealMode: () => boolean;
+  canExecuteLiveOrders: () => boolean;
+}
+
+export function isRealMode(): boolean {
+  return useServiceStatusStore.getState().override === 'Real';
+}
+
+export function isSimulationMode(): boolean {
+  return useServiceStatusStore.getState().override === 'Mock';
+}
+
+export function canExecuteLiveOrders(): boolean {
+  const { override, status } = useServiceStatusStore.getState();
+  return override === 'Real' && status.data === 'connected';
 }
 
 function loadPersistedOverride(): OverrideSetting {
@@ -102,6 +117,9 @@ export const useServiceStatusStore = create<ServiceStatusState>((set, get) => {
         });
       }
     },
+
+    isRealMode: () => get().override === 'Real',
+    canExecuteLiveOrders: () => get().override === 'Real' && get().status.data === 'connected',
   };
 });
 

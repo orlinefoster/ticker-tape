@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { commands, type OHLCVBar } from '@/lib/tauri';
+import { useServiceStatusStore } from '@/store/serviceStatusStore';
 import { UNIVERSE_PRESETS } from './presets';
 import type { AnalystCandidate, AnalystReport, MarketUniverseType } from './types';
 import { runTopDownAnalystPipeline } from './engine';
@@ -18,6 +19,8 @@ export default function TopDownModule() {
   const [report, setReport] = useState<AnalystReport | null>(null);
   const [operatorCandidates, setOperatorCandidates] = useState<AnalystCandidate[]>([]);
   const [showAIModal, setShowAIModal] = useState<boolean>(false);
+  const [missingSymbols, setMissingSymbols] = useState<string[]>([]);
+  const [syncingMissing, setSyncingMissing] = useState<boolean>(false);
 
   // Helper to generate simulated bars when provider is offline or rate-limited
   const generateMockBars = (sym: string, count = 90): OHLCVBar[] => {
@@ -66,27 +69,40 @@ export default function TopDownModule() {
       }
 
       // 1. Fetch intermarket analysis
-      let intermarketData: any = null;
+      let intermarketData: Record<string, unknown> | null = null;
       try {
-        intermarketData = await commands.runAnalysis('intermarket', [], {});
+        intermarketData = await commands.runAnalysis<Record<string, unknown>>('intermarket', [], {});
       } catch (err) {
         console.warn('Intermarket backend not ready, using fallback:', err);
       }
 
-      // 2. Fetch bars for all symbols in universe
-      const barsMap: Record<string, OHLCVBar[]> = {};
-      for (const sym of symbolList) {
-        try {
-          const bars = await commands.fetchMarketData(sym, '6m');
-          if (bars && bars.length > 10) {
-            barsMap[sym] = bars;
-          } else {
-            barsMap[sym] = generateMockBars(sym);
+      // 2. Fetch bars for all symbols in universe in parallel
+      const isReal = useServiceStatusStore.getState().override === 'Real';
+      const missingList: string[] = [];
+
+      const barsResults = await Promise.all(
+        symbolList.map(async (sym) => {
+          try {
+            const bars = await commands.fetchMarketData(sym, '6m');
+            if (bars && bars.length > 10) {
+              return [sym, bars] as const;
+            }
+            if (isReal) {
+              missingList.push(sym);
+              return [sym, []] as const;
+            }
+            return [sym, generateMockBars(sym)] as const;
+          } catch {
+            if (isReal) {
+              missingList.push(sym);
+              return [sym, []] as const;
+            }
+            return [sym, generateMockBars(sym)] as const;
           }
-        } catch {
-          barsMap[sym] = generateMockBars(sym);
-        }
-      }
+        })
+      );
+      setMissingSymbols(missingList);
+      const barsMap: Record<string, OHLCVBar[]> = Object.fromEntries(barsResults);
 
       // 3. Run the top-down pipeline engine
       const generatedReport = runTopDownAnalystPipeline(
@@ -99,12 +115,26 @@ export default function TopDownModule() {
 
       setReport(generatedReport);
       setOperatorCandidates(generatedReport.topCandidates);
-    } catch (e: any) {
-      setError(e.message || 'Error al ejecutar el pipeline Top-Down');
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Error al ejecutar el pipeline Top-Down';
+      setError(msg);
     } finally {
       setLoading(false);
     }
   }, [selectedUniverse, customBenchmark, customSymbols]);
+
+  const handleDownloadMissing = async (toDownload: string[]) => {
+    if (toDownload.length === 0) return;
+    setSyncingMissing(true);
+    try {
+      await commands.resyncMarketData(toDownload, '1y');
+      await executePipeline();
+    } catch (e) {
+      setError(`Error al descargar datos para ${toDownload.join(', ')}: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSyncingMissing(false);
+    }
+  };
 
   useEffect(() => {
     executePipeline();
@@ -146,14 +176,15 @@ export default function TopDownModule() {
       {/* Universe & Config Selector Bar */}
       <div style={styles.configBar}>
         <div style={styles.universeGroup}>
-          <span style={styles.configLabel}>Universo de Mercado:</span>
-          <div style={styles.presetButtons}>
+          <span style={styles.configLabel} id="universe-selector-label">Universo de Mercado:</span>
+          <div style={styles.presetButtons} role="group" aria-labelledby="universe-selector-label">
             {UNIVERSE_PRESETS.map((preset) => {
               const isSelected = selectedUniverse === preset.id;
               return (
                 <button
                   key={preset.id}
                   onClick={() => setSelectedUniverse(preset.id)}
+                  aria-pressed={isSelected}
                   style={{
                     ...styles.presetBtn,
                     backgroundColor: isSelected ? 'var(--primary)' : 'var(--bg-secondary)',
@@ -175,6 +206,7 @@ export default function TopDownModule() {
             <input
               type="text"
               placeholder="Benchmark (ej. SPY)"
+              aria-label="Benchmark personalizado"
               value={customBenchmark}
               onChange={(e) => setCustomBenchmark(e.target.value)}
               style={styles.customInputSmall}
@@ -182,6 +214,7 @@ export default function TopDownModule() {
             <input
               type="text"
               placeholder="Símbolos separados por coma (ej. AAPL, NVDA, TSLA, BTC)"
+              aria-label="Símbolos personalizados del universo"
               value={customSymbols}
               onChange={(e) => setCustomSymbols(e.target.value)}
               style={styles.customInputLarge}
@@ -193,9 +226,59 @@ export default function TopDownModule() {
         )}
       </div>
 
+      {/* Missing Real Data Banner (Modo Real Integrity Guard) */}
+      {missingSymbols.length > 0 && (
+        <div
+          style={{
+            margin: '0 0 16px 0',
+            padding: '12px 18px',
+            backgroundColor: 'rgba(245, 158, 11, 0.12)',
+            border: '1px solid rgba(245, 158, 11, 0.35)',
+            borderRadius: 'var(--radius)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '14px',
+            fontFamily: 'monospace',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.8rem', color: 'var(--signal-warning)' }}>
+            <span style={{ fontSize: '1.2rem' }}>⚠️</span>
+            <span>
+              <strong>Faltan datos históricos reales para:</strong> {missingSymbols.join(', ')}.
+              Se excluyeron del pipeline top-down para evitar distorsiones con datos simulados.
+            </span>
+          </div>
+          <button
+            onClick={() => handleDownloadMissing(missingSymbols)}
+            disabled={syncingMissing}
+            style={{
+              padding: '6px 14px',
+              fontSize: '0.78rem',
+              fontWeight: 700,
+              backgroundColor: 'var(--accent)',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: 'var(--radius-sm)',
+              cursor: syncingMissing ? 'not-allowed' : 'pointer',
+              whiteSpace: 'nowrap',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            {syncingMissing ? '⏳ Descargando...' : '📥 Descargar datos reales ahora'}
+          </button>
+        </div>
+      )}
+
       {/* Navigation Tabs (Analista vs Operador) */}
-      <div style={styles.tabsRow}>
+      <div style={styles.tabsRow} role="tablist" aria-label="Modo de Trabajo Top-Down">
         <button
+          role="tab"
+          aria-selected={activeTab === 'analyst'}
+          aria-controls="panel-analyst"
+          id="tab-analyst"
           onClick={() => setActiveTab('analyst')}
           style={{
             ...styles.tabBtn,
@@ -207,6 +290,10 @@ export default function TopDownModule() {
         </button>
 
         <button
+          role="tab"
+          aria-selected={activeTab === 'operator'}
+          aria-controls="panel-operator"
+          id="tab-operator"
           onClick={() => setActiveTab('operator')}
           style={{
             ...styles.tabBtn,
@@ -240,7 +327,11 @@ export default function TopDownModule() {
 
       {/* Active Tab View */}
       {report && (
-        <>
+        <div
+          role="tabpanel"
+          id={activeTab === 'analyst' ? 'panel-analyst' : 'panel-operator'}
+          aria-labelledby={activeTab === 'analyst' ? 'tab-analyst' : 'tab-operator'}
+        >
           {activeTab === 'analyst' ? (
             <AnalystReportView
               report={report}
@@ -250,7 +341,7 @@ export default function TopDownModule() {
           ) : (
             <OperatorDeskView candidates={operatorCandidates} />
           )}
-        </>
+        </div>
       )}
 
       {/* Compact AI Prompt Modal */}

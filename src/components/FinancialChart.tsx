@@ -34,6 +34,7 @@ export interface FinancialChartProps {
   markers?: ChartMarker[];
   height?: number;
   autoFit?: boolean;
+  allowWheelZoom?: boolean;
 }
 
 export function FinancialChart({
@@ -43,6 +44,7 @@ export function FinancialChart({
   markers = [],
   height = 400,
   autoFit = true,
+  allowWheelZoom = false,
 }: FinancialChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -87,6 +89,21 @@ export function FinancialChart({
         timeVisible: true,
         secondsVisible: false,
       },
+      handleScroll: allowWheelZoom
+        ? true
+        : {
+            mouseWheel: false,
+            pressedMouseMove: true,
+            horzTouchDrag: true,
+            vertTouchDrag: false,
+          },
+      handleScale: allowWheelZoom
+        ? true
+        : {
+            mouseWheel: false,
+            pinch: true,
+            axisPressedMouseMove: true,
+          },
     });
 
     chartRef.current = chart;

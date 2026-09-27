@@ -238,7 +238,7 @@ mod tests {
     fn test_deref() {
         let bars = vec![make_bar(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(), 100.0)];
         let bc = BarCollection::new(bars).unwrap();
-        let slice: &[OHLCVBar] = &*bc;
+        let slice: &[OHLCVBar] = &bc;
         assert_eq!(slice.len(), 1);
     }
 

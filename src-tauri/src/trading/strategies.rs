@@ -166,7 +166,7 @@ impl Strategy for BollingerBands {
             // Buy when price touches or crosses below lower band.
             if bar.close <= lower {
                 // Strength proportional to how far below the band (capped at 1.0).
-                let strength = ((lower - bar.close) / lower).min(1.0).max(0.1);
+                let strength = ((lower - bar.close) / lower).clamp(0.1, 1.0);
                 signals.push(Signal {
                     symbol: symbol.to_string(),
                     direction: SignalDirection::Buy,
@@ -184,7 +184,7 @@ impl Strategy for BollingerBands {
 
             // Sell when price touches or crosses above upper band.
             if bar.close >= upper {
-                let strength = ((bar.close - upper) / upper).min(1.0).max(0.1);
+                let strength = ((bar.close - upper) / upper).clamp(0.1, 1.0);
                 signals.push(Signal {
                     symbol: symbol.to_string(),
                     direction: SignalDirection::Sell,
@@ -335,9 +335,7 @@ impl Strategy for RSI {
 
             // Buy: crosses from below oversold to above oversold.
             if prev_rsi <= self.oversold && curr_rsi > self.oversold {
-                let strength = ((curr_rsi - self.oversold) / (50.0 - self.oversold))
-                    .min(1.0)
-                    .max(0.1);
+                let strength = ((curr_rsi - self.oversold) / (50.0 - self.oversold)).clamp(0.1, 1.0);
                 signals.push(Signal {
                     symbol: symbol.to_string(),
                     direction: SignalDirection::Buy,
@@ -354,9 +352,7 @@ impl Strategy for RSI {
 
             // Sell: crosses from above overbought to below overbought.
             if prev_rsi >= self.overbought && curr_rsi < self.overbought {
-                let strength = ((self.overbought - curr_rsi) / (self.overbought - 50.0))
-                    .min(1.0)
-                    .max(0.1);
+                let strength = ((self.overbought - curr_rsi) / (self.overbought - 50.0)).clamp(0.1, 1.0);
                 signals.push(Signal {
                     symbol: symbol.to_string(),
                     direction: SignalDirection::Sell,

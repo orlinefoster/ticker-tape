@@ -51,8 +51,17 @@ impl WaveDegree {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
-        Self::ALL.iter().find(|d| d.as_str() == s).copied()
+}
+
+impl std::str::FromStr for WaveDegree {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::ALL
+            .iter()
+            .find(|d| d.as_str() == s)
+            .copied()
+            .ok_or(())
     }
 }
 

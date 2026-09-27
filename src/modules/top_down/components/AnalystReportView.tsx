@@ -192,7 +192,7 @@ export function AnalystReportView({
           </div>
 
           <div style={styles.tableScroll}>
-            <table style={styles.table}>
+            <table className="institutional-table" style={styles.table}>
               <thead>
                 <tr>
                   <th style={styles.th}>Activo</th>
@@ -214,7 +214,7 @@ export function AnalystReportView({
                       onClick={() => setSelectedSymbol(item.symbol)}
                       style={{
                         ...styles.tr,
-                        backgroundColor: isSel ? 'rgba(0, 229, 255, 0.08)' : 'transparent',
+                        backgroundColor: isSel ? 'rgba(59, 130, 246, 0.15)' : undefined,
                       }}
                     >
                       <td style={{ ...styles.td, fontWeight: 'bold', color: 'var(--text-primary)' }}>
@@ -297,9 +297,9 @@ const styles: Record<string, React.CSSProperties> = {
   },
   macroStatBox: {
     padding: '8px 14px',
-    backgroundColor: 'var(--bg-secondary)',
+    backgroundColor: 'var(--border)',
     borderRadius: '8px',
-    border: '1px solid var(--border-subtle)',
+    border: '1px solid var(--border)',
     minWidth: '110px',
   },
   macroStatLabel: {
@@ -397,7 +397,8 @@ const styles: Record<string, React.CSSProperties> = {
   },
   candidateElliottBox: {
     padding: '8px 10px',
-    backgroundColor: 'var(--bg-secondary)',
+    backgroundColor: 'var(--border)',
+    border: '1px solid var(--border)',
     borderRadius: '8px',
   },
   candidateWave: {

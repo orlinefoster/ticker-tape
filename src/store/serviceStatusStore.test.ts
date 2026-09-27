@@ -89,4 +89,19 @@ describe('useServiceStatusStore', () => {
       binance: 'connected', // true -> connected
     });
   });
+
+  it('should evaluate isRealMode and canExecuteLiveOrders accurately', async () => {
+    const checkMock = commands.checkServicesStatus as any;
+    checkMock.mockResolvedValue({ db: true, ai: true, data: true, binance: true });
+
+    const store = useServiceStatusStore.getState();
+    store.setOverride('Mock');
+    expect(store.isRealMode()).toBe(false);
+    expect(store.canExecuteLiveOrders()).toBe(false);
+
+    store.setOverride('Real');
+    expect(store.isRealMode()).toBe(true);
+    await store.pollStatus();
+    expect(store.canExecuteLiveOrders()).toBe(true);
+  });
 });

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { commands, type Signal } from '@/lib/tauri';
+import { useServiceStatusStore } from '@/store/serviceStatusStore';
 import { StatCard } from '@/components/StatCard';
 
 interface AssetMonitorRow {
@@ -12,6 +13,7 @@ interface AssetMonitorRow {
   maStatus: 'Bullish' | 'Bearish' | 'Neutral';
   consensusSignal: 'Buy' | 'Sell' | 'Neutral';
   signalStrength: number;
+  hasData: boolean;
 }
 
 const MONITORED_ASSETS = [
@@ -27,89 +29,101 @@ const MONITORED_ASSETS = [
 ];
 
 export default function MonitorModule() {
+  const { override } = useServiceStatusStore();
   const [rows, setRows] = useState<AssetMonitorRow[]>([]);
   const [recentSignals, setRecentSignals] = useState<Signal[]>([]);
   const [loading, setLoading] = useState(false);
+  const [syncingAll, setSyncingAll] = useState(false);
 
   const loadMonitorData = async () => {
     setLoading(true);
     try {
-      const updatedRows: AssetMonitorRow[] = [];
       const signalsList: Signal[] = [];
+      const isReal = useServiceStatusStore.getState().override === 'Real';
 
-      for (const asset of MONITORED_ASSETS) {
-        try {
-          const bars = await commands.fetchMarketData(asset.symbol, '3m');
-          let lastPrice = 100.0;
-          let change1d = 0.0;
-          let change1w = 0.0;
-          let rsi = 50.0;
-          let maStatus: 'Bullish' | 'Bearish' | 'Neutral' = 'Neutral';
-
-          if (bars && bars.length > 5) {
-            const last = bars[bars.length - 1];
-            const prev = bars[bars.length - 2];
-            const weekAgo = bars[Math.max(0, bars.length - 6)];
-
-            lastPrice = last.close;
-            change1d = (last.close - prev.close) / prev.close;
-            change1w = (last.close - weekAgo.close) / weekAgo.close;
-
-            // Simple RSI approx
-            const gains: number[] = [];
-            const losses: number[] = [];
-            for (let i = Math.max(1, bars.length - 14); i < bars.length; i++) {
-              const diff = bars[i].close - bars[i - 1].close;
-              if (diff >= 0) gains.push(diff);
-              else losses.push(Math.abs(diff));
-            }
-            const avgGain = gains.length ? gains.reduce((a, b) => a + b, 0) / 14 : 0.001;
-            const avgLoss = losses.length ? losses.reduce((a, b) => a + b, 0) / 14 : 0.001;
-            const rs = avgGain / Math.max(0.0001, avgLoss);
-            rsi = 100 - (100 / (1 + rs));
-
-            maStatus = change1w > 0.01 ? 'Bullish' : change1w < -0.01 ? 'Bearish' : 'Neutral';
-          }
-
-          // Evaluate strategy signals
+      const updatedRows: AssetMonitorRow[] = await Promise.all(
+        MONITORED_ASSETS.map(async (asset): Promise<AssetMonitorRow> => {
           try {
-            const signals = await commands.runStrategy(asset.symbol, 'ma-crossover', { fast: 50, slow: 200 });
-            if (signals && signals.length > 0) {
-              signalsList.push(...signals.slice(-1));
+            const bars = await commands.fetchMarketData(asset.symbol, '3m');
+            const hasData = Boolean(bars && bars.length > 5);
+
+            let lastPrice = hasData ? bars[bars.length - 1].close : (isReal ? 0 : 100.0);
+            let change1d = 0.0;
+            let change1w = 0.0;
+            let rsi = hasData ? 50.0 : (isReal ? 0 : 50.0);
+            let maStatus: 'Bullish' | 'Bearish' | 'Neutral' = 'Neutral';
+
+            if (hasData) {
+              const last = bars[bars.length - 1];
+              const prev = bars[bars.length - 2];
+              const weekAgo = bars[Math.max(0, bars.length - 6)];
+
+              lastPrice = last.close;
+              change1d = (last.close - prev.close) / prev.close;
+              change1w = (last.close - weekAgo.close) / weekAgo.close;
+
+              const gains: number[] = [];
+              const losses: number[] = [];
+              for (let i = Math.max(1, bars.length - 14); i < bars.length; i++) {
+                const diff = bars[i].close - bars[i - 1].close;
+                if (diff >= 0) gains.push(diff);
+                else losses.push(Math.abs(diff));
+              }
+              const avgGain = gains.length ? gains.reduce((a, b) => a + b, 0) / 14 : 0.001;
+              const avgLoss = losses.length ? losses.reduce((a, b) => a + b, 0) / 14 : 0.001;
+              const rs = avgGain / Math.max(0.0001, avgLoss);
+              rsi = 100 - (100 / (1 + rs));
+
+              maStatus = change1w > 0.01 ? 'Bullish' : change1w < -0.01 ? 'Bearish' : 'Neutral';
             }
+
+            try {
+              if (hasData) {
+                const signals = await commands.runStrategy(asset.symbol, 'ma-crossover', { fast: 50, slow: 200 });
+                if (signals && signals.length > 0) {
+                  signalsList.push(...signals.slice(-1));
+                }
+              }
+            } catch {
+              // Ignore per-symbol strategy error
+            }
+
+            const consensusSignal: 'Buy' | 'Sell' | 'Neutral' = !hasData
+              ? 'Neutral'
+              : rsi < 35 || maStatus === 'Bullish'
+              ? 'Buy'
+              : rsi > 65 || maStatus === 'Bearish'
+              ? 'Sell'
+              : 'Neutral';
+
+            return {
+              symbol: asset.symbol,
+              name: asset.name,
+              lastPrice,
+              change1d,
+              change1w,
+              rsi,
+              maStatus,
+              consensusSignal,
+              signalStrength: hasData ? Math.abs(rsi - 50) / 50 : 0,
+              hasData,
+            };
           } catch {
-            // Ignore per-symbol strategy error
+            return {
+              symbol: asset.symbol,
+              name: asset.name,
+              lastPrice: isReal ? 0 : 100.0,
+              change1d: isReal ? 0 : 0.005,
+              change1w: isReal ? 0 : 0.015,
+              rsi: isReal ? 0 : 54.0,
+              maStatus: 'Neutral',
+              consensusSignal: 'Neutral',
+              signalStrength: isReal ? 0 : 0.5,
+              hasData: !isReal,
+            };
           }
-
-          const consensusSignal: 'Buy' | 'Sell' | 'Neutral' =
-            rsi < 35 || maStatus === 'Bullish' ? 'Buy' : rsi > 65 || maStatus === 'Bearish' ? 'Sell' : 'Neutral';
-
-          updatedRows.push({
-            symbol: asset.symbol,
-            name: asset.name,
-            lastPrice,
-            change1d,
-            change1w,
-            rsi,
-            maStatus,
-            consensusSignal,
-            signalStrength: Math.abs(rsi - 50) / 50,
-          });
-        } catch {
-          // Fallback mock if data unavailable
-          updatedRows.push({
-            symbol: asset.symbol,
-            name: asset.name,
-            lastPrice: 100.0,
-            change1d: 0.005,
-            change1w: 0.015,
-            rsi: 54.0,
-            maStatus: 'Bullish',
-            consensusSignal: 'Neutral',
-            signalStrength: 0.5,
-          });
-        }
-      }
+        })
+      );
 
       setRows(updatedRows);
       setRecentSignals(signalsList);
@@ -118,25 +132,85 @@ export default function MonitorModule() {
     }
   };
 
+  const handleSyncAllMonitor = async () => {
+    setSyncingAll(true);
+    try {
+      await commands.resyncMarketData(MONITORED_ASSETS.map((a) => a.symbol), '3m');
+      await loadMonitorData();
+    } catch (e) {
+      console.error('Error syncing monitor assets:', e);
+    } finally {
+      setSyncingAll(false);
+    }
+  };
+
   useEffect(() => {
     loadMonitorData();
   }, []);
 
-  const bullishCount = rows.filter((r) => r.consensusSignal === 'Buy').length;
-  const bearishCount = rows.filter((r) => r.consensusSignal === 'Sell').length;
+  const bullishCount = rows.filter((r) => r.hasData && r.consensusSignal === 'Buy').length;
+  const bearishCount = rows.filter((r) => r.hasData && r.consensusSignal === 'Sell').length;
 
   return (
     <div style={styles.container}>
       <div style={styles.header}>
         <div>
-          <h2 style={styles.title}>Monitor de Mercado en Vivo 👁️</h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <h2 style={styles.title}>Monitor de Mercado en Vivo 👁️</h2>
+            {override === 'Real' ? (
+              <span
+                style={{
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  fontFamily: 'monospace',
+                  padding: '2px 8px',
+                  borderRadius: 'var(--radius-sm)',
+                  backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                  border: '1px solid rgba(16, 185, 129, 0.35)',
+                  color: 'var(--signal-bullish)',
+                }}
+              >
+                🟢 MODO REAL (SQLITE/LIVE)
+              </span>
+            ) : (
+              <span
+                style={{
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  fontFamily: 'monospace',
+                  padding: '2px 8px',
+                  borderRadius: 'var(--radius-sm)',
+                  backgroundColor: 'rgba(245, 158, 11, 0.15)',
+                  border: '1px solid rgba(245, 158, 11, 0.35)',
+                  color: 'var(--signal-warning)',
+                }}
+              >
+                ⚠️ SIMULACIÓN (PAPER DATA)
+              </span>
+            )}
+          </div>
           <p style={styles.subtitle}>
             Scanner multi-activo, detección de momentum, osciladores y radar de señales
           </p>
         </div>
-        <button onClick={loadMonitorData} disabled={loading} style={styles.refreshBtn}>
-          🔄 {loading ? 'Escaneando...' : 'Actualizar Radar'}
-        </button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            onClick={handleSyncAllMonitor}
+            disabled={loading || syncingAll}
+            style={{
+              ...styles.refreshBtn,
+              backgroundColor: 'var(--bg-secondary)',
+              border: '1px solid var(--border)',
+              color: 'var(--text-primary)',
+            }}
+            title="Descargar cotizaciones auténticas de todos los activos monitoreados"
+          >
+            {syncingAll ? '⏳ Sincronizando...' : '📥 Sincronizar Cotizaciones Reales'}
+          </button>
+          <button onClick={loadMonitorData} disabled={loading || syncingAll} style={styles.refreshBtn}>
+            🔄 {loading ? 'Escaneando...' : 'Actualizar Radar'}
+          </button>
+        </div>
       </div>
 
       {/* Stats Summary */}
@@ -173,7 +247,7 @@ export default function MonitorModule() {
           <h3 style={styles.cardTitle}>Scanner de Activos</h3>
         </div>
         <div style={{ overflowX: 'auto' }}>
-          <table style={styles.table}>
+          <table className="institutional-table" style={styles.table}>
             <thead>
               <tr>
                 <th style={styles.th}>Activo</th>
@@ -193,12 +267,20 @@ export default function MonitorModule() {
                     <strong>{r.symbol}</strong>
                     <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{r.name}</div>
                   </td>
-                  <td style={styles.td}>${r.lastPrice.toFixed(2)}</td>
-                  <td style={{ ...styles.td, color: r.change1d >= 0 ? '#4caf50' : '#f44336', fontWeight: 600 }}>
-                    {r.change1d >= 0 ? '+' : ''}{(r.change1d * 100).toFixed(2)}%
+                  <td style={styles.td}>
+                    {r.hasData ? (
+                      `$${r.lastPrice.toFixed(2)}`
+                    ) : (
+                      <span style={{ color: 'var(--signal-warning)', fontSize: '0.74rem', fontFamily: 'monospace' }}>
+                        -- (Sin datos)
+                      </span>
+                    )}
                   </td>
-                  <td style={{ ...styles.td, color: r.change1w >= 0 ? '#4caf50' : '#f44336', fontWeight: 600 }}>
-                    {r.change1w >= 0 ? '+' : ''}{(r.change1w * 100).toFixed(2)}%
+                  <td style={{ ...styles.td, color: !r.hasData ? 'var(--text-muted)' : r.change1d >= 0 ? '#4caf50' : '#f44336', fontWeight: 600 }}>
+                    {r.hasData ? `${r.change1d >= 0 ? '+' : ''}${(r.change1d * 100).toFixed(2)}%` : '--'}
+                  </td>
+                  <td style={{ ...styles.td, color: !r.hasData ? 'var(--text-muted)' : r.change1w >= 0 ? '#4caf50' : '#f44336', fontWeight: 600 }}>
+                    {r.hasData ? `${r.change1w >= 0 ? '+' : ''}${(r.change1w * 100).toFixed(2)}%` : '--'}
                   </td>
                   <td style={styles.td}>
                     <span

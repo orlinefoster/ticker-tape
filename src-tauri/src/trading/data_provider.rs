@@ -175,11 +175,11 @@ impl DataProvider for YahooFinanceProvider {
         let bars: Vec<OHLCVBar> = result
             .timestamp
             .iter()
-            .zip(quote.open.into_iter())
-            .zip(quote.high.into_iter())
-            .zip(quote.low.into_iter())
-            .zip(quote.close.into_iter())
-            .zip(quote.volume.into_iter())
+            .zip(quote.open)
+            .zip(quote.high)
+            .zip(quote.low)
+            .zip(quote.close)
+            .zip(quote.volume)
             .filter_map(|(((((ts, open), high), low), close), volume)| {
                 // Skip entries with missing price data
                 let open = open?;

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { commands, type OHLCVBar } from '@/lib/tauri';
+import { useServiceStatusStore } from '@/store/serviceStatusStore';
 import { FinancialChart, type ChartMarker } from '@/components/FinancialChart';
 import type { CandlestickData, Time } from 'lightweight-charts';
 
@@ -19,11 +20,26 @@ interface WaveLabel {
 }
 
 export default function ElliottWaveModule() {
+  const { override } = useServiceStatusStore();
   const [symbol, setSymbol] = useState('SPY');
   const [waves, setWaves] = useState<WaveLabel[]>([]);
   const [bars, setBars] = useState<OHLCVBar[]>([]);
   const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  async function handleSyncData() {
+    setSyncing(true);
+    setError(null);
+    try {
+      await commands.resyncMarketData([symbol], '2y');
+      await handleCount();
+    } catch (e) {
+      setError(`Error al descargar cotizaciones para ${symbol}: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   useEffect(() => {
     loadData();
@@ -33,18 +49,17 @@ export default function ElliottWaveModule() {
     setLoading(true);
     setError(null);
     try {
-      // 1. Fetch bars for chart
-      try {
-        const fetchedBars = await commands.fetchMarketData(symbol, '2y');
-        setBars(fetchedBars || []);
-      } catch (err) {
-        console.warn('Could not fetch market bars for chart:', err);
-      }
+      const [fetchedBars, labels] = await Promise.all([
+        commands.fetchMarketData(symbol, '2y').catch((err) => {
+          console.warn('Could not fetch market bars for chart:', err);
+          return [];
+        }),
+        commands.loadWaveLabels<WaveLabel[]>(symbol).catch(() => []),
+      ]);
 
-      // 2. Load wave labels
-      const labels = (await commands.loadWaveLabels(symbol)) as WaveLabel[];
+      setBars(fetchedBars || []);
       setWaves(labels || []);
-    } catch (e) {
+    } catch {
       setWaves([]);
     } finally {
       setLoading(false);
@@ -55,11 +70,11 @@ export default function ElliottWaveModule() {
     setLoading(true);
     setError(null);
     try {
-      const labels = (await commands.recountWaves(symbol)) as WaveLabel[];
+      const [labels, fetchedBars] = await Promise.all([
+        commands.recountWaves<WaveLabel[]>(symbol),
+        commands.fetchMarketData(symbol, '2y').catch(() => []),
+      ]);
       setWaves(labels || []);
-
-      // Refresh bars
-      const fetchedBars = await commands.fetchMarketData(symbol, '2y');
       setBars(fetchedBars || []);
     } catch (e) {
       setError(String(e));
@@ -102,7 +117,40 @@ export default function ElliottWaveModule() {
     <div style={styles.container}>
       <div style={styles.header}>
         <div>
-          <h2 style={styles.title}>Elliott Wave Theory 🌊</h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <h2 style={styles.title}>Elliott Wave Theory 🌊</h2>
+            {override === 'Real' ? (
+              <span
+                style={{
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  fontFamily: 'monospace',
+                  padding: '2px 8px',
+                  borderRadius: 'var(--radius-sm)',
+                  backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                  border: '1px solid rgba(16, 185, 129, 0.35)',
+                  color: 'var(--signal-bullish)',
+                }}
+              >
+                🟢 MODO REAL (SQLITE)
+              </span>
+            ) : (
+              <span
+                style={{
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  fontFamily: 'monospace',
+                  padding: '2px 8px',
+                  borderRadius: 'var(--radius-sm)',
+                  backgroundColor: 'rgba(245, 158, 11, 0.15)',
+                  border: '1px solid rgba(245, 158, 11, 0.35)',
+                  color: 'var(--signal-warning)',
+                }}
+              >
+                ⚠️ SIMULACIÓN (PAPER DATA)
+              </span>
+            )}
+          </div>
           <p style={styles.subtitle}>
             Conteo fractal automático de ondas de impulso (1-5) y corrección (A-C)
           </p>
@@ -119,16 +167,47 @@ export default function ElliottWaveModule() {
             <option value="GLD">GLD (Gold)</option>
             <option value="TLT">TLT (20Y Treasury)</option>
           </select>
-          <button onClick={handleCount} disabled={loading} style={styles.button}>
+          <button onClick={handleCount} disabled={loading || syncing} style={styles.button}>
             {loading ? 'Calculando...' : '🔄 Contar Ondas'}
+          </button>
+          <button
+            onClick={handleSyncData}
+            disabled={loading || syncing}
+            style={{
+              ...styles.button,
+              backgroundColor: 'var(--bg-secondary)',
+              border: '1px solid var(--border)',
+              color: 'var(--text-primary)',
+            }}
+            title="Descargar datos frescos de 2 años para este símbolo"
+          >
+            {syncing ? '⏳ Descargando...' : '📥 Sincronizar'}
           </button>
         </div>
       </div>
 
       {error && (
-        <div style={styles.error}>
-          <span style={{ fontSize: '1.25rem' }}>⚠️</span>
-          <span>{error}</span>
+        <div style={{ ...styles.error, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '1.25rem' }}>⚠️</span>
+            <span>{error}</span>
+          </div>
+          <button
+            onClick={handleSyncData}
+            disabled={syncing}
+            style={{
+              padding: '4px 12px',
+              fontSize: '0.75rem',
+              fontWeight: 700,
+              backgroundColor: 'var(--accent)',
+              color: '#fff',
+              border: 'none',
+              borderRadius: 'var(--radius-sm)',
+              cursor: syncing ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {syncing ? '⏳ Descargando...' : `📥 Descargar cotizaciones reales (${symbol})`}
+          </button>
         </div>
       )}
 
@@ -190,7 +269,7 @@ export default function ElliottWaveModule() {
 function WaveTable({ waves }: { waves: WaveLabel[] }) {
   return (
     <div style={{ overflowX: 'auto' }}>
-      <table style={styles.table}>
+      <table className="institutional-table" style={styles.table}>
         <thead>
           <tr>
             <th style={styles.th}>Onda</th>

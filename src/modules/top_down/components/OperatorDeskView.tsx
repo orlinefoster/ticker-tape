@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useServiceStatusStore } from '@/store/serviceStatusStore';
 import type { AnalystCandidate, OperatorPlan, OperatorSettings, SizingMethod } from '../types';
 import { buildOperatorExecutionPlan } from '../engine';
 
@@ -43,6 +44,8 @@ export function OperatorDeskView({ candidates, initialSettings }: OperatorDeskVi
     setTimeout(() => setCopied(false), 2500);
   };
 
+  const { override } = useServiceStatusStore();
+
   return (
     <div style={styles.container}>
       {/* 1. Risk Parameters Control Panel */}
@@ -59,6 +62,50 @@ export function OperatorDeskView({ candidates, initialSettings }: OperatorDeskVi
             {copied ? '✅ ¡Ticket Copiado!' : '📋 Copiar Ticket de Órdenes'}
           </button>
         </div>
+
+        {override === 'Mock' ? (
+          <div
+            style={{
+              margin: '0 0 16px 0',
+              padding: '8px 14px',
+              backgroundColor: 'rgba(245, 158, 11, 0.1)',
+              border: '1px solid rgba(245, 158, 11, 0.3)',
+              borderRadius: '6px',
+              color: 'var(--signal-warning)',
+              fontSize: '0.8rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              fontFamily: 'monospace',
+            }}
+          >
+            <span>⚠️</span>
+            <span>
+              <strong>Modo Simulación (Paper Trading):</strong> Las órdenes hacia brokers en vivo están estrictamente bloqueadas para proteger tu capital.
+            </span>
+          </div>
+        ) : (
+          <div
+            style={{
+              margin: '0 0 16px 0',
+              padding: '8px 14px',
+              backgroundColor: 'rgba(16, 185, 129, 0.1)',
+              border: '1px solid rgba(16, 185, 129, 0.3)',
+              borderRadius: '6px',
+              color: 'var(--signal-bullish)',
+              fontSize: '0.8rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              fontFamily: 'monospace',
+            }}
+          >
+            <span>🟢</span>
+            <span>
+              <strong>Modo Real Verificado:</strong> Entorno en vivo activo sobre cotizaciones oficiales.
+            </span>
+          </div>
+        )}
 
         <div style={styles.inputsGrid}>
           <div style={styles.inputGroup}>
@@ -157,7 +204,7 @@ export function OperatorDeskView({ candidates, initialSettings }: OperatorDeskVi
         </div>
 
         <div style={styles.tableScroll}>
-          <table style={styles.table}>
+          <table className="institutional-table" style={styles.table}>
             <thead>
               <tr>
                 <th style={styles.th}>Activo</th>
@@ -380,7 +427,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   kpiCard: {
     padding: '16px',
-    backgroundColor: 'var(--bg-surface)',
+    backgroundColor: 'var(--border)',
     border: '1px solid var(--border)',
     borderRadius: '12px',
     display: 'flex',

@@ -11,7 +11,7 @@ pub mod ollama;
 use chrono::{NaiveDate, Utc};
 use tauri::Manager;
 
-use crate::db::market_data_repo::MarketDataRepository;
+use crate::db::market_data_repo::{MarketDataRepository, SymbolCacheSummary};
 use crate::trading::backtest::{BacktestResult, Backtester};
 use crate::trading::bar_collection::BarCollection;
 use crate::trading::market_data;
@@ -686,6 +686,80 @@ async fn get_cache_stats() -> Result<Vec<CacheItem>, String> {
     Ok(items)
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ResyncResult {
+    pub synced: Vec<String>,
+    pub failed: Vec<(String, String)>,
+}
+
+/// Purge cached market data from SQLite.
+/// If `symbols` is empty, purges all market data.
+/// Otherwise purges only the specified symbols.
+#[tauri::command]
+async fn purge_market_data(symbols: Vec<String>) -> Result<u64, String> {
+    let pool = db::get_db().map_err(|e| e.to_string())?;
+    if symbols.is_empty() {
+        MarketDataRepository::delete_all(pool)
+            .await
+            .map_err(|e| e.to_string())
+    } else {
+        let mut total = 0u64;
+        for s in symbols {
+            let count = MarketDataRepository::delete_symbol(pool, &s)
+                .await
+                .map_err(|e| e.to_string())?;
+            total += count;
+        }
+        Ok(total)
+    }
+}
+
+/// Get detailed cache summary for all symbols in SQLite.
+#[tauri::command]
+async fn get_market_data_summary() -> Result<Vec<SymbolCacheSummary>, String> {
+    let pool = db::get_db().map_err(|e| e.to_string())?;
+    MarketDataRepository::get_cached_symbols_summary(pool)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Redownload clean market data from authentic providers (Yahoo Finance / Binance)
+/// and store into SQLite cache.
+#[tauri::command]
+async fn resync_market_data(symbols: Vec<String>, range: Option<String>) -> Result<ResyncResult, String> {
+    let pool = db::get_db().map_err(|e| e.to_string())?;
+    let r = range.unwrap_or_else(|| "1y".to_string());
+    let to = Utc::now().date_naive();
+    let from = parse_range(&r, to)?;
+
+    let mut synced = Vec::new();
+    let mut failed = Vec::new();
+
+    for sym in symbols {
+        let clean = sym.trim().to_uppercase();
+        if clean.is_empty() {
+            continue;
+        }
+        // Purge current symbol cache first
+        let _ = MarketDataRepository::delete_symbol(pool, &clean).await;
+
+        match market_data::fetch_historical_data(&clean, from, to).await {
+            Ok(bars) => {
+                if let Err(e) = MarketDataRepository::upsert_bars(pool, &bars).await {
+                    failed.push((clean, format!("Error caching bars: {}", e)));
+                } else {
+                    synced.push(clean);
+                }
+            }
+            Err(e) => {
+                failed.push((clean, e.to_string()));
+            }
+        }
+    }
+
+    Ok(ResyncResult { synced, failed })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tracing_subscriber::fmt()
@@ -731,6 +805,9 @@ pub fn run() {
             ping_provider_test,
             clear_symbol_cache,
             get_cache_stats,
+            purge_market_data,
+            get_market_data_summary,
+            resync_market_data,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -749,9 +826,6 @@ mod tests {
         }
 
         let status = super::check_services_status().await.unwrap();
-
-        // Clean up
-        let _ = std::fs::remove_file(&db_path);
 
         assert!(status.db, "Database status should be true when initialized");
     }

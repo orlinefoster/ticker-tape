@@ -143,8 +143,8 @@ impl Backtester {
         }
 
         // --- Liquidate any open position at the last bar ----------------------
-        if position > 0.0 {
-            if let Some(last) = bars.last() {
+        if position > 0.0
+            && let Some(last) = bars.last() {
                 let exit_value = position * last.close;
                 let pnl = exit_value - (position * entry_price);
                 trades.push(TradeRecord {
@@ -163,7 +163,6 @@ impl Backtester {
                 cash += exit_value;
                 // position is intentionally NOT cleared here — it's dropped anyway
             }
-        }
 
         // Final equity after liquidation
         let final_equity = cash;

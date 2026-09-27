@@ -345,7 +345,7 @@ mod tests {
         assert!(metrics.volatility >= 0.0);
         // One position is up, one is down → volatility > 0.
         assert!(
-            metrics.volatility > 0.0 || metrics.volatility == 0.0,
+            metrics.volatility >= 0.0,
             "Volatility should be >= 0"
         );
     }

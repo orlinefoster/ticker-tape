@@ -146,6 +146,38 @@ impl MarketDataRepository {
         .await?;
         Ok(rows)
     }
+    /// Delete all cached bars across all symbols.
+    pub async fn delete_all(pool: &Pool<Sqlite>) -> Result<u64> {
+        let result = sqlx::query("DELETE FROM market_data")
+            .execute(pool)
+            .await?;
+        Ok(result.rows_affected())
+    }
+
+    /// List all cached symbols with structured summary.
+    pub async fn get_cached_symbols_summary(
+        pool: &Pool<Sqlite>,
+    ) -> Result<Vec<SymbolCacheSummary>> {
+        let rows = Self::get_cache_overview(pool).await?;
+        Ok(rows
+            .into_iter()
+            .map(|(symbol, bar_count, min_date, max_date)| SymbolCacheSummary {
+                symbol,
+                bar_count,
+                min_date,
+                max_date,
+            })
+            .collect())
+    }
+}
+
+/// Structured summary of a cached symbol in SQLite
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SymbolCacheSummary {
+    pub symbol: String,
+    pub bar_count: i64,
+    pub min_date: Option<String>,
+    pub max_date: Option<String>,
 }
 
 // ---------------------------------------------------------------------------

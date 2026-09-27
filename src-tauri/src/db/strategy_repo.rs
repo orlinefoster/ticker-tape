@@ -37,7 +37,7 @@ impl StrategyRepository {
         .await?;
 
         rows.iter()
-            .map(|row| Self::row_to_strategy(row))
+            .map(Self::row_to_strategy)
             .collect()
     }
 
@@ -52,7 +52,7 @@ impl StrategyRepository {
         .await?;
 
         row.as_ref()
-            .map(|r| Self::row_to_strategy(r))
+            .map(Self::row_to_strategy)
             .transpose()
     }
 

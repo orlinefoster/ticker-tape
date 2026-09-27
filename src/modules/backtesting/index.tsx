@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { commands, type BacktestResult } from '@/lib/tauri';
+import { useServiceStatusStore } from '@/store/serviceStatusStore';
 import { FinancialChart } from '@/components/FinancialChart';
 import { StatCard } from '@/components/StatCard';
 import type { LineData, Time } from 'lightweight-charts';
@@ -7,6 +8,7 @@ import type { LineData, Time } from 'lightweight-charts';
 type StrategyType = 'ma-crossover' | 'bollinger-bands' | 'rsi';
 
 export default function BacktestingModule() {
+  const { override } = useServiceStatusStore();
   const [symbol, setSymbol] = useState('SPY');
   const [strategy, setStrategy] = useState<StrategyType>('ma-crossover');
   const [initialCapital, setInitialCapital] = useState(100000);
@@ -24,7 +26,21 @@ export default function BacktestingModule() {
 
   const [result, setResult] = useState<BacktestResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const handleSyncSymbolData = async () => {
+    setSyncing(true);
+    setError(null);
+    try {
+      await commands.resyncMarketData([symbol], '2y');
+      await handleRunBacktest();
+    } catch (e) {
+      setError(`Error al descargar datos para ${symbol}: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const handleRunBacktest = async () => {
     setLoading(true);
@@ -75,7 +91,40 @@ export default function BacktestingModule() {
     <div style={styles.container}>
       <div style={styles.header}>
         <div>
-          <h2 style={styles.title}>Motor de Backtesting 📈</h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <h2 style={styles.title}>Motor de Backtesting 📈</h2>
+            {override === 'Real' ? (
+              <span
+                style={{
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  fontFamily: 'monospace',
+                  padding: '2px 8px',
+                  borderRadius: 'var(--radius-sm)',
+                  backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                  border: '1px solid rgba(16, 185, 129, 0.35)',
+                  color: 'var(--signal-bullish)',
+                }}
+              >
+                🟢 MODO REAL (SQLITE)
+              </span>
+            ) : (
+              <span
+                style={{
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  fontFamily: 'monospace',
+                  padding: '2px 8px',
+                  borderRadius: 'var(--radius-sm)',
+                  backgroundColor: 'rgba(245, 158, 11, 0.15)',
+                  border: '1px solid rgba(245, 158, 11, 0.35)',
+                  color: 'var(--signal-warning)',
+                }}
+              >
+                ⚠️ SIMULACIÓN (PAPER DATA)
+              </span>
+            )}
+          </div>
           <p style={styles.subtitle}>
             Simulación cuantitativa y evaluación histórica de rendimiento de estrategias
           </p>
@@ -209,23 +258,61 @@ export default function BacktestingModule() {
           </div>
         </div>
 
-        <button
-          onClick={handleRunBacktest}
-          disabled={loading}
-          style={styles.runButton}
-        >
-          {loading ? 'Simulando Estrategia...' : '🚀 Ejecutar Backtest'}
-        </button>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button
+            onClick={handleRunBacktest}
+            disabled={loading || syncing}
+            style={styles.runButton}
+          >
+            {loading ? 'Simulando Estrategia...' : '🚀 Ejecutar Backtest'}
+          </button>
+          <button
+            onClick={handleSyncSymbolData}
+            disabled={loading || syncing}
+            style={{
+              padding: '12px 18px',
+              backgroundColor: 'var(--bg-secondary)',
+              border: '1px solid var(--border)',
+              borderRadius: '8px',
+              color: 'var(--text-primary)',
+              fontSize: '0.9rem',
+              fontWeight: 600,
+              cursor: loading || syncing ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+            title="Descargar datos frescos de 2 años desde el proveedor oficial para este símbolo"
+          >
+            {syncing ? '⏳ Descargando...' : `📥 Sincronizar datos reales (${symbol})`}
+          </button>
+        </div>
       </div>
 
       {/* Error Alert */}
       {error && (
         <div style={styles.error}>
           <span style={{ fontSize: '1.25rem' }}>⚠️</span>
-          <div>
+          <div style={{ flex: 1 }}>
             <strong>Error al ejecutar backtest</strong>
             <p style={{ margin: '4px 0 0' }}>{error}</p>
           </div>
+          <button
+            onClick={handleSyncSymbolData}
+            disabled={syncing}
+            style={{
+              padding: '6px 14px',
+              fontSize: '0.8rem',
+              fontWeight: 700,
+              backgroundColor: 'var(--accent)',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: syncing ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {syncing ? '⏳ Descargando...' : `📥 Descargar datos de ${symbol} ahora`}
+          </button>
         </div>
       )}
 
