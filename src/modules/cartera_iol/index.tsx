@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Card, Button, Badge, StatMetric } from '@/components/ui';
 import { DonutChart, type PieSegment } from '@/components/DonutChart';
 import { commands } from '@/lib/tauri';
+import { useServiceStatusStore } from '@/store/serviceStatusStore';
+import { useUIStore } from '@/store/uiStore';
 
 export type IOLAssetType = 'CEDEAR' | 'MERVAL' | 'BONO_SOBERANO' | 'ON_CORPORATIVA' | 'FCI_CAUCION';
 
@@ -140,6 +142,7 @@ const INITIAL_IOL_TRADES: IOLOrderRecord[] = [
 ];
 
 const GENERATE_IOL_EQUITY = (totalArs: number, mepRate: number): IOLEquityPoint[] => {
+  if (totalArs <= 0) return [];
   const points: IOLEquityPoint[] = [];
   const days = 30;
   let runningArs = totalArs * 0.86;
@@ -153,7 +156,7 @@ const GENERATE_IOL_EQUITY = (totalArs: number, mepRate: number): IOLEquityPoint[
     const dailyArsReturn = Math.sin(i * 0.65) * 0.012 + 0.005;
     runningArs = runningArs * (1 + dailyArsReturn);
     if (runningArs > peakArs) peakArs = runningArs;
-    const dd = ((runningArs - peakArs) / peakArs) * 100;
+    const dd = peakArs > 0 ? ((runningArs - peakArs) / peakArs) * 100 : 0;
 
     points.push({
       date: dateStr,
@@ -172,6 +175,8 @@ const GENERATE_IOL_EQUITY = (totalArs: number, mepRate: number): IOLEquityPoint[
 };
 
 export default function CarteraIOLModule() {
+  const { override } = useServiceStatusStore();
+  const { setActiveRoute } = useUIStore();
   const [activeTab, setActiveTab] = useState<'resumen' | 'equity' | 'money-management' | 'trades'>('resumen');
   const [displayCurrency, setDisplayCurrency] = useState<'ARS' | 'USD_MEP'>('ARS');
   const [positions, setPositions] = useState<IOLPosition[]>(INITIAL_IOL_POSITIONS);
@@ -194,21 +199,28 @@ export default function CarteraIOLModule() {
   // Portfolio Max Drawdown Limit
   const [maxAllowedDdPct] = useState<number>(12);
 
-  const totalInvestedArs = positions.reduce((sum, p) => sum + p.marketValueArs, 0);
-  const totalCarteraArs = totalInvestedArs + cashArs + (cashUsdMep * mepExchangeRate);
+  const isReal = override === 'Real';
+  // In Real mode, simulated sandbox holdings are isolated and reset to zero unless real connected assets exist
+  const effectivePositions = isReal ? [] : positions;
+  const effectiveCashArs = isReal ? 0 : cashArs;
+  const effectiveCashUsdMep = isReal ? 0 : cashUsdMep;
+  const effectiveTrades = isReal ? [] : trades;
+
+  const totalInvestedArs = effectivePositions.reduce((sum, p) => sum + p.marketValueArs, 0);
+  const totalCarteraArs = totalInvestedArs + effectiveCashArs + (effectiveCashUsdMep * mepExchangeRate);
   const totalCarteraUsdMep = totalCarteraArs / mepExchangeRate;
-  const totalUnrealizedPnLArs = positions.reduce((sum, p) => sum + p.unrealizedPnLArs, 0);
+  const totalUnrealizedPnLArs = effectivePositions.reduce((sum, p) => sum + p.unrealizedPnLArs, 0);
   const totalCostBasisArs = totalInvestedArs - totalUnrealizedPnLArs;
   const totalReturnPct = totalCostBasisArs > 0 ? (totalUnrealizedPnLArs / totalCostBasisArs) * 100 : 0;
 
   const equityHistory = React.useMemo(() => GENERATE_IOL_EQUITY(totalCarteraArs, mepExchangeRate), [totalCarteraArs, mepExchangeRate]);
   const currentDrawdown = equityHistory.length ? equityHistory[equityHistory.length - 1].drawdown : 0;
-  const maxDrawdown = equityHistory.reduce((min, p) => Math.min(min, p.drawdown), 0);
+  const maxDrawdown = equityHistory.length ? equityHistory.reduce((min, p) => Math.min(min, p.drawdown), 0) : 0;
 
   // Currency Exposure Breakdown
-  const usdExposureArs = positions
+  const usdExposureArs = effectivePositions
     .filter((p) => p.currencyExposure === 'USD_CCL' || p.currencyExposure === 'USD_MEP')
-    .reduce((sum, p) => sum + p.marketValueArs, 0) + (cashUsdMep * mepExchangeRate);
+    .reduce((sum, p) => sum + p.marketValueArs, 0) + (effectiveCashUsdMep * mepExchangeRate);
   const usdExposurePct = totalCarteraArs > 0 ? (usdExposureArs / totalCarteraArs) * 100 : 0;
   const arsExposurePct = 100 - usdExposurePct;
 
@@ -266,18 +278,18 @@ export default function CarteraIOLModule() {
 
   // Donut Chart by Asset Type
   const assetTypeTotals: Record<string, number> = {};
-  positions.forEach((p) => {
+  effectivePositions.forEach((p) => {
     assetTypeTotals[p.assetType] = (assetTypeTotals[p.assetType] || 0) + p.marketValueArs;
   });
-  assetTypeTotals['LIQUIDEZ'] = cashArs + (cashUsdMep * mepExchangeRate);
+  assetTypeTotals['LIQUIDEZ'] = effectiveCashArs + (effectiveCashUsdMep * mepExchangeRate);
 
-  const pieData: PieSegment[] = [
+  const pieData: PieSegment[] = effectivePositions.length > 0 ? [
     { label: 'CEDEARs (USA)', value: assetTypeTotals['CEDEAR'] || 0, color: '#FF6B9D' },
     { label: 'Acciones Merval', value: assetTypeTotals['MERVAL'] || 0, color: '#B388FF' },
     { label: 'Bonos Soberanos', value: assetTypeTotals['BONO_SOBERANO'] || 0, color: '#00F5D4' },
     { label: 'Obligaciones Neg.', value: assetTypeTotals['ON_CORPORATIVA'] || 0, color: '#FFE082' },
     { label: 'Caja & Liquidez', value: assetTypeTotals['LIQUIDEZ'] || 0, color: '#454C73' },
-  ].filter((p) => p.value > 0);
+  ].filter((p) => p.value > 0) : [];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '22px', paddingBottom: '40px' }}>
@@ -296,9 +308,15 @@ export default function CarteraIOLModule() {
             >
               🇦🇷 Cartera Broker IOL (InvertirOnline)
             </h1>
-            <Badge variant="sakura" pulse>
-              IOL BROKER
-            </Badge>
+            {override === 'Real' ? (
+              <Badge variant="sakura" pulse>
+                IOL BROKER LIVE (REAL)
+              </Badge>
+            ) : (
+              <Badge variant="warning">
+                SIMULACIÓN (PAPER IOL)
+              </Badge>
+            )}
           </div>
           <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
             Módulo dedicado para CEDEARs, Acciones del Merval (BYMA), Bonos y ONs con seguimiento de PnL y cobertura cambiaria.
@@ -449,45 +467,62 @@ export default function CarteraIOLModule() {
 
       {/* TAB 1: Resumen & Posiciones */}
       {activeTab === 'resumen' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '18px' }}>
-            <Card variant="glass" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-bright)' }}>
-                  Asignación por Clase de Activo 📊
-                </h3>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                  CEDEARs, Merval, Bonos & Liquidez
-                </span>
-              </div>
-              <DonutChart
-                data={pieData}
-                centerText={
-                  displayCurrency === 'ARS'
-                    ? `$${(totalCarteraArs / 1000000).toFixed(1)}M`
-                    : `$${(totalCarteraUsdMep / 1000).toFixed(1)}k`
-                }
-                centerSubtext={displayCurrency === 'ARS' ? 'Total ARS' : 'Total MEP'}
-              />
-            </Card>
+        effectivePositions.length === 0 ? (
+          <Card style={{ padding: '36px 20px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '14px', border: '1px solid rgba(239, 68, 68, 0.3)', backgroundColor: 'rgba(239, 68, 68, 0.04)' }}>
+            <div style={{ fontSize: '2.5rem' }}>🇦🇷</div>
+            <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-bright)' }}>
+              MODO REAL ACTIVO: INVERTIRONLINE (IOL) NO CONECTADO / DESINCRONIZADO
+            </h3>
+            <p style={{ margin: 0, maxWidth: '620px', fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+              El terminal se encuentra operando en <strong>Modo Real (Live Data Engine)</strong>. Las tenencias simuladas de CEDEARs, acciones BYMA y bonos soberanos están puestas en cero ($0.00 ARS / $0.00 USD) para evitar balances ficticios.
+              Para sincronizar tu portafolio de BYMA, saldos y operar en vivo, conectá tu cuenta de InvertirOnline vía API o servidor MCP.
+            </p>
+            <div style={{ display: 'flex', gap: '12px', marginTop: '6px' }}>
+              <Button variant="outline" size="md" onClick={() => setActiveRoute('/providers')} style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}>
+                🔗 Conectar InvertirOnline (IOL MCP) en Proveedores
+              </Button>
+            </div>
+          </Card>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '18px' }}>
+              <Card variant="glass" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-bright)' }}>
+                    Asignación por Clase de Activo 📊
+                  </h3>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                    CEDEARs, Merval, Bonos & Liquidez
+                  </span>
+                </div>
+                <DonutChart
+                  data={pieData}
+                  centerText={
+                    displayCurrency === 'ARS'
+                      ? `$${(totalCarteraArs / 1000000).toFixed(1)}M`
+                      : `$${(totalCarteraUsdMep / 1000).toFixed(1)}k`
+                  }
+                  centerSubtext={displayCurrency === 'ARS' ? 'Total ARS' : 'Total MEP'}
+                />
+              </Card>
 
-            <Card style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-bright)' }}>
-                Liquidez y Cotización Cambiaria 💵
-              </h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '4px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
-                  <span style={{ color: 'var(--text-secondary)' }}>Disponible en Pesos (ARS):</span>
-                  <strong className="font-mono" style={{ color: 'var(--text-bright)' }}>
-                    ${cashArs.toLocaleString('es-AR')}
-                  </strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
-                  <span style={{ color: 'var(--text-secondary)' }}>Disponible en Dólar MEP:</span>
-                  <strong className="font-mono" style={{ color: 'var(--accent-mint)' }}>
-                    u$s {cashUsdMep.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                  </strong>
-                </div>
+              <Card style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-bright)' }}>
+                  Liquidez y Cotización Cambiaria 💵
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '4px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Disponible en Pesos (ARS):</span>
+                    <strong className="font-mono" style={{ color: 'var(--text-bright)' }}>
+                      ${effectiveCashArs.toLocaleString('es-AR')}
+                    </strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Disponible en Dólar MEP:</span>
+                    <strong className="font-mono" style={{ color: 'var(--accent-mint)' }}>
+                      u$s {effectiveCashUsdMep.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    </strong>
+                  </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', alignItems: 'center' }}>
                   <span style={{ color: 'var(--text-secondary)' }}>Cotización Dólar MEP ($):</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -532,30 +567,27 @@ export default function CarteraIOLModule() {
             </div>
 
             <div style={{ overflowX: 'auto', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', textAlign: 'left' }}>
+              <table className="institutional-table">
                 <thead>
-                  <tr style={{ backgroundColor: 'var(--bg-canvas)', borderBottom: '1px solid var(--border-subtle)' }}>
-                    <th style={{ padding: '9px 14px', color: 'var(--text-secondary)' }}>Especie</th>
-                    <th style={{ padding: '9px 14px', color: 'var(--text-secondary)' }}>Tipo</th>
-                    <th style={{ padding: '9px 14px', color: 'var(--text-secondary)' }}>Nominales</th>
-                    <th style={{ padding: '9px 14px', color: 'var(--text-secondary)' }}>P. Compra</th>
-                    <th style={{ padding: '9px 14px', color: 'var(--text-secondary)' }}>P. Actual</th>
-                    <th style={{ padding: '9px 14px', color: 'var(--text-secondary)' }}>
+                  <tr>
+                    <th>Especie</th>
+                    <th>Tipo</th>
+                    <th>Nominales</th>
+                    <th>P. Compra</th>
+                    <th>P. Actual</th>
+                    <th>
                       {displayCurrency === 'ARS' ? 'Valor Mercado ($)' : 'Valor MEP (u$s)'}
                     </th>
-                    <th style={{ padding: '9px 14px', color: 'var(--text-secondary)' }}>P&L ($)</th>
-                    <th style={{ padding: '9px 14px', color: 'var(--text-secondary)' }}>P&L (%)</th>
-                    <th style={{ padding: '9px 14px', color: 'var(--text-secondary)' }}>Peso</th>
+                    <th>P&L ($)</th>
+                    <th>P&L (%)</th>
+                    <th>Peso</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {positions.map((p, idx) => (
+                  {effectivePositions.map((p) => (
                     <tr
                       key={p.symbol}
-                      style={{
-                        borderBottom: '1px solid var(--border-subtle)',
-                        backgroundColor: idx % 2 === 0 ? 'transparent' : 'rgba(255, 107, 157, 0.02)',
-                      }}
+                      className={p.unrealizedPnLArs >= 0 ? 'row-bullish' : 'row-bearish'}
                     >
                       <td style={{ padding: '9px 14px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -621,7 +653,8 @@ export default function CarteraIOLModule() {
             </div>
           </Card>
         </div>
-      )}
+      )
+    )}
 
       {/* TAB 2: Equity Curve & Rendimiento */}
       {activeTab === 'equity' && (
@@ -887,48 +920,48 @@ export default function CarteraIOLModule() {
               Boletos y Registro de Órdenes en InvertirOnline (BYMA)
             </h3>
             <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-              {trades.length} operaciones registradas
+              {effectiveTrades.length} operaciones registradas
             </span>
           </div>
 
-          <div style={{ overflowX: 'auto', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', textAlign: 'left' }}>
-              <thead>
-                <tr style={{ backgroundColor: 'var(--bg-canvas)', borderBottom: '1px solid var(--border-subtle)' }}>
-                  <th style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>Boleto / Fecha</th>
-                  <th style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>Tipo</th>
-                  <th style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>Especie</th>
-                  <th style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>Nominales</th>
-                  <th style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>Precio Unitario</th>
-                  <th style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>Monto Bruto</th>
-                  <th style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>Derechos & Comisiones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {trades.map((t, idx) => (
-                  <tr
-                    key={t.id}
-                    style={{
-                      borderBottom: '1px solid var(--border-subtle)',
-                      backgroundColor: idx % 2 === 0 ? 'transparent' : 'rgba(255, 107, 157, 0.02)',
-                    }}
-                  >
-                    <td className="font-mono" style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>{t.timestamp}</td>
-                    <td style={{ padding: '8px 12px' }}>
-                      <Badge variant={t.type === 'COMPRA' ? 'mint' : t.type === 'VENTA' ? 'bearish' : 'lavender'}>
-                        {t.type}
-                      </Badge>
-                    </td>
-                    <td className="font-mono" style={{ padding: '8px 12px', fontWeight: 800, color: 'var(--text-bright)' }}>{t.symbol}</td>
-                    <td className="font-mono" style={{ padding: '8px 12px' }}>{t.nominalQuantity?.toLocaleString() || '-'}</td>
-                    <td className="font-mono" style={{ padding: '8px 12px' }}>{t.priceArs ? `$${t.priceArs.toLocaleString()}` : '-'}</td>
-                    <td className="font-mono" style={{ padding: '8px 12px', fontWeight: 700 }}>${t.totalArs.toLocaleString()}</td>
-                    <td className="font-mono" style={{ padding: '8px 12px', color: 'var(--text-muted)' }}>${t.commissionArs.toLocaleString()}</td>
+          {effectiveTrades.length === 0 ? (
+            <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+              No hay boletos ni operaciones reales registradas en InvertirOnline.
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
+              <table className="institutional-table">
+                <thead>
+                  <tr>
+                    <th>Boleto / Fecha</th>
+                    <th>Tipo</th>
+                    <th>Especie</th>
+                    <th>Nominales</th>
+                    <th>Precio Unitario</th>
+                    <th>Monto Bruto</th>
+                    <th>Derechos & Comisiones</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {effectiveTrades.map((t) => (
+                    <tr key={t.id}>
+                      <td className="font-mono" style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>{t.timestamp}</td>
+                      <td style={{ padding: '8px 12px' }}>
+                        <Badge variant={t.type === 'COMPRA' ? 'mint' : t.type === 'VENTA' ? 'bearish' : 'lavender'}>
+                          {t.type}
+                        </Badge>
+                      </td>
+                      <td className="font-mono" style={{ padding: '8px 12px', fontWeight: 800, color: 'var(--text-bright)' }}>{t.symbol}</td>
+                      <td className="font-mono" style={{ padding: '8px 12px' }}>{t.nominalQuantity?.toLocaleString() || '-'}</td>
+                      <td className="font-mono" style={{ padding: '8px 12px' }}>{t.priceArs ? `$${t.priceArs.toLocaleString()}` : '-'}</td>
+                      <td className="font-mono" style={{ padding: '8px 12px', fontWeight: 700 }}>${t.totalArs.toLocaleString()}</td>
+                      <td className="font-mono" style={{ padding: '8px 12px', color: 'var(--text-muted)' }}>${t.commissionArs.toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </Card>
       )}
     </div>

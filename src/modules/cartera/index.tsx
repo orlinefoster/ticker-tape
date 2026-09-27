@@ -3,6 +3,7 @@ import { Card, Button, Badge, StatMetric } from '@/components/ui';
 import { DonutChart, type PieSegment } from '@/components/DonutChart';
 import { commands } from '@/lib/tauri';
 import { useUIStore } from '@/store/uiStore';
+import { useServiceStatusStore } from '@/store/serviceStatusStore';
 import { EquityCurveChart } from './components/EquityCurveChart';
 import { ExoPositionManagerModal } from './components/ExoPositionManagerModal';
 import { RiskReturnMetricsCard } from './components/RiskReturnMetricsCard';
@@ -122,6 +123,7 @@ const INITIAL_TRADES: TradeRecord[] = [
 ];
 
 const GENERATE_EQUITY_HISTORY = (currentEquity: number): EquityPoint[] => {
+  if (currentEquity <= 0) return [];
   const points: EquityPoint[] = [];
   const days = 30;
   let runningEquity = currentEquity * 0.88;
@@ -136,7 +138,7 @@ const GENERATE_EQUITY_HISTORY = (currentEquity: number): EquityPoint[] => {
     const dailyReturn = Math.sin(i * 0.7) * 0.015 + 0.004;
     runningEquity = runningEquity * (1 + dailyReturn);
     if (runningEquity > peak) peak = runningEquity;
-    const dd = ((runningEquity - peak) / peak) * 100;
+    const dd = peak > 0 ? ((runningEquity - peak) / peak) * 100 : 0;
 
     benchmarkVal = benchmarkVal * (1 + dailyReturn * 1.2);
 
@@ -156,6 +158,7 @@ const GENERATE_EQUITY_HISTORY = (currentEquity: number): EquityPoint[] => {
 };
 
 export default function CarteraModule() {
+  const { override } = useServiceStatusStore();
   const { setActiveRoute } = useUIStore();
   const [activeTab, setActiveTab] = useState<'resumen' | 'equity' | 'money-management' | 'trades'>('resumen');
   const [positions, setPositions] = useState<CryptoPosition[]>(INITIAL_CRYPTO_POSITIONS);
@@ -177,15 +180,21 @@ export default function CarteraModule() {
   // Maximum Drawdown Budget
   const [maxAllowedDdPct] = useState<number>(15);
 
-  const totalCryptoValue = positions.reduce((sum, p) => sum + p.marketValue, 0);
-  const totalCarteraValue = totalCryptoValue + usdtCash;
-  const totalUnrealizedPnL = positions.reduce((sum, p) => sum + p.unrealizedPnL, 0);
+  const isReal = override === 'Real';
+  // In Real mode, simulated sandbox holdings are isolated and reset to zero unless real connected assets exist
+  const effectivePositions = isReal ? [] : positions;
+  const effectiveUsdtCash = isReal ? 0 : usdtCash;
+  const effectiveTrades = isReal ? [] : trades;
+
+  const totalCryptoValue = effectivePositions.reduce((sum, p) => sum + p.marketValue, 0);
+  const totalCarteraValue = totalCryptoValue + effectiveUsdtCash;
+  const totalUnrealizedPnL = effectivePositions.reduce((sum, p) => sum + p.unrealizedPnL, 0);
   const totalCostBasis = totalCryptoValue - totalUnrealizedPnL;
   const totalReturnPct = totalCostBasis > 0 ? (totalUnrealizedPnL / totalCostBasis) * 100 : 0;
 
   const equityHistory = React.useMemo(() => GENERATE_EQUITY_HISTORY(totalCarteraValue), [totalCarteraValue]);
   const currentDrawdown = equityHistory.length ? equityHistory[equityHistory.length - 1].drawdown : 0;
-  const maxDrawdown = equityHistory.reduce((min, p) => Math.min(min, p.drawdown), 0);
+  const maxDrawdown = equityHistory.length ? equityHistory.reduce((min, p) => Math.min(min, p.drawdown), 0) : 0;
 
   const handleRefreshLivePrices = async () => {
     setRefreshingPrices(true);
@@ -236,18 +245,18 @@ export default function CarteraModule() {
   const kellyPctHalf = kellyPctFull / 2;
 
   const donutColors = ['#FF6B9D', '#B388FF', '#00F5D4', '#FFE082', '#00E5FF'];
-  const pieData: PieSegment[] = [
-    ...positions.map((p, idx) => ({
+  const pieData: PieSegment[] = effectivePositions.length > 0 ? [
+    ...effectivePositions.map((p, idx) => ({
       label: p.symbol,
       value: p.marketValue,
       color: donutColors[idx % donutColors.length],
     })),
     {
       label: 'USDT Liquidez',
-      value: usdtCash,
+      value: effectiveUsdtCash,
       color: '#454C73',
     },
-  ];
+  ] : [];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '22px', paddingBottom: '40px' }}>
@@ -266,9 +275,15 @@ export default function CarteraModule() {
             >
               ⚡ Cartera Binance Spot
             </h1>
-            <Badge variant="mint" pulse>
-              BINANCE LIVE
-            </Badge>
+            {override === 'Real' ? (
+              <Badge variant="mint" pulse>
+                BINANCE LIVE (REAL)
+              </Badge>
+            ) : (
+              <Badge variant="warning">
+                SIMULACIÓN (PAPER CRYPTO)
+              </Badge>
+            )}
           </div>
           <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
             Módulo dedicado al seguimiento de PnL Cripto, Equity Curve histórica y herramientas de Money Management / Adm. de Cartera.
@@ -373,62 +388,79 @@ export default function CarteraModule() {
 
       {/* TAB 1: Resumen & Posiciones */}
       {activeTab === 'resumen' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '18px' }}>
-            <Card variant="glass" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-bright)' }}>
-                  Asignación de Activos Cripto 🪙
-                </h3>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                  {positions.length} activos + Liquidez
-                </span>
-              </div>
-              <DonutChart
-                data={pieData}
-                centerText={`$${(totalCarteraValue / 1000).toFixed(1)}k`}
-                centerSubtext="Total USDT"
-              />
-            </Card>
+        effectivePositions.length === 0 ? (
+          <Card style={{ padding: '36px 20px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '14px', border: '1px solid rgba(239, 68, 68, 0.3)', backgroundColor: 'rgba(239, 68, 68, 0.04)' }}>
+            <div style={{ fontSize: '2.5rem' }}>🔴</div>
+            <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-bright)' }}>
+              MODO REAL ACTIVO: CUENTA BINANCE NO CONECTADA / DESINCRONIZADA
+            </h3>
+            <p style={{ margin: 0, maxWidth: '620px', fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+              El terminal se encuentra operando en <strong>Modo Real (Live Data Engine)</strong>. Las tenencias simuladas han sido puestas en cero ($0.00 USDT) para garantizar la integridad contable.
+              Para ver tu saldo real de Binance, tenencias en custodia y ejecutar órdenes en vivo, vinculá tus credenciales API.
+            </p>
+            <div style={{ display: 'flex', gap: '12px', marginTop: '6px' }}>
+              <Button variant="mint" size="md" onClick={() => setActiveRoute('/providers')}>
+                🔗 Conectar Binance API en Proveedores
+              </Button>
+            </div>
+          </Card>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '18px' }}>
+              <Card variant="glass" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-bright)' }}>
+                    Asignación de Activos Cripto 🪙
+                  </h3>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                    {effectivePositions.length} activos + Liquidez
+                  </span>
+                </div>
+                <DonutChart
+                  data={pieData}
+                  centerText={`$${(totalCarteraValue / 1000).toFixed(1)}k`}
+                  centerSubtext="Total USDT"
+                />
+              </Card>
 
-            <Card style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-bright)' }}>
-                Diagnóstico de Diversificación 🛡️
-              </h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '4px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
-                  <span style={{ color: 'var(--text-secondary)' }}>Exposición Neta Cripto:</span>
-                  <strong className="font-mono" style={{ color: 'var(--text-bright)' }}>
-                    {((totalCryptoValue / totalCarteraValue) * 100).toFixed(1)}% ({positions.length} activos)
-                  </strong>
+              <Card style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-bright)' }}>
+                  Diagnóstico de Diversificación 🛡️
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '4px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Exposición Neta Cripto:</span>
+                    <strong className="font-mono" style={{ color: 'var(--text-bright)' }}>
+                      {totalCarteraValue > 0 ? ((totalCryptoValue / totalCarteraValue) * 100).toFixed(1) : '0.0'}% ({effectivePositions.length} activos)
+                    </strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Reserva de Liquidez USDT:</span>
+                    <strong className="font-mono" style={{ color: 'var(--accent-mint)' }}>
+                      ${effectiveUsdtCash.toLocaleString()} ({totalCarteraValue > 0 ? ((effectiveUsdtCash / totalCarteraValue) * 100).toFixed(1) : '0.0'}%)
+                    </strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Dominancia Bitcoin (BTC):</span>
+                    <strong className="font-mono" style={{ color: 'var(--accent-sakura)' }}>
+                      {effectivePositions.find((p) => p.symbol === 'BTC') && totalCarteraValue > 0 ? `${((effectivePositions.find((p) => p.symbol === 'BTC')!.marketValue / totalCarteraValue) * 100).toFixed(1)}%` : '0%'}
+                    </strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Concentración Top 2 Activos:</span>
+                    <strong className="font-mono" style={{ color: 'var(--text-bright)' }}>
+                      {totalCarteraValue > 0 ? (((effectivePositions[0]?.marketValue || 0) + (effectivePositions[1]?.marketValue || 0)) / totalCarteraValue * 100).toFixed(1) : '0.0'}%
+                    </strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', alignItems: 'center' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Estado de Riesgo:</span>
+                    <Badge variant="mint">
+                      EQUILIBRADO CONSERVADOR
+                    </Badge>
+                  </div>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
-                  <span style={{ color: 'var(--text-secondary)' }}>Reserva de Liquidez USDT:</span>
-                  <strong className="font-mono" style={{ color: 'var(--accent-mint)' }}>
-                    ${usdtCash.toLocaleString()} ({((usdtCash / totalCarteraValue) * 100).toFixed(1)}%)
-                  </strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
-                  <span style={{ color: 'var(--text-secondary)' }}>Dominancia Bitcoin (BTC):</span>
-                  <strong className="font-mono" style={{ color: 'var(--accent-sakura)' }}>
-                    {positions.find((p) => p.symbol === 'BTC') ? `${((positions.find((p) => p.symbol === 'BTC')!.marketValue / totalCarteraValue) * 100).toFixed(1)}%` : '0%'}
-                  </strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
-                  <span style={{ color: 'var(--text-secondary)' }}>Concentración Top 2 Activos:</span>
-                  <strong className="font-mono" style={{ color: 'var(--text-bright)' }}>
-                    {(((positions[0]?.marketValue || 0) + (positions[1]?.marketValue || 0)) / totalCarteraValue * 100).toFixed(1)}%
-                  </strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', alignItems: 'center' }}>
-                  <span style={{ color: 'var(--text-secondary)' }}>Estado de Riesgo:</span>
-                  <Badge variant="mint">
-                    EQUILIBRADO CONSERVADOR
-                  </Badge>
-                </div>
-              </div>
-            </Card>
-          </div>
+              </Card>
+            </div>
 
           <Card style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -441,28 +473,25 @@ export default function CarteraModule() {
             </div>
 
             <div style={{ overflowX: 'auto', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', textAlign: 'left' }}>
+              <table className="institutional-table">
                 <thead>
-                  <tr style={{ backgroundColor: 'var(--bg-canvas)', borderBottom: '1px solid var(--border-subtle)' }}>
-                    <th style={{ padding: '9px 14px', color: 'var(--text-secondary)' }}>Activo</th>
-                    <th style={{ padding: '9px 14px', color: 'var(--text-secondary)' }}>Cantidad</th>
-                    <th style={{ padding: '9px 14px', color: 'var(--text-secondary)' }}>Precio Compra</th>
-                    <th style={{ padding: '9px 14px', color: 'var(--text-secondary)' }}>Precio Binance</th>
-                    <th style={{ padding: '9px 14px', color: 'var(--text-secondary)' }}>Valor Mercado</th>
-                    <th style={{ padding: '9px 14px', color: 'var(--text-secondary)' }}>P&L ($)</th>
-                    <th style={{ padding: '9px 14px', color: 'var(--text-secondary)' }}>P&L (%)</th>
-                    <th style={{ padding: '9px 14px', color: 'var(--text-secondary)' }}>Peso</th>
-                    <th style={{ padding: '9px 14px', color: 'var(--text-secondary)', textAlign: 'center' }}>Gestión EXO / UTs</th>
+                  <tr>
+                    <th>Activo</th>
+                    <th>Cantidad</th>
+                    <th>Precio Compra</th>
+                    <th>Precio Binance</th>
+                    <th>Valor Mercado</th>
+                    <th>P&L ($)</th>
+                    <th>P&L (%)</th>
+                    <th>Peso</th>
+                    <th style={{ textAlign: 'center' }}>Gestión EXO / UTs</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {positions.map((p, idx) => (
+                  {effectivePositions.map((p) => (
                     <tr
                       key={p.symbol}
-                      style={{
-                        borderBottom: '1px solid var(--border-subtle)',
-                        backgroundColor: idx % 2 === 0 ? 'transparent' : 'rgba(255, 107, 157, 0.02)',
-                      }}
+                      className={p.unrealizedPnL >= 0 ? 'row-bullish' : 'row-bearish'}
                     >
                       <td style={{ padding: '9px 14px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -531,7 +560,8 @@ export default function CarteraModule() {
             </div>
           </Card>
         </div>
-      )}
+      )
+    )}
 
       {/* TAB 2: Equity Curve con TradingView Lightweight Charts & Métricas */}
       {activeTab === 'equity' && (
@@ -716,48 +746,48 @@ export default function CarteraModule() {
               Registro de Operaciones & Órdenes en Binance Spot
             </h3>
             <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-              {trades.length} operaciones registradas
+              {effectiveTrades.length} operaciones registradas
             </span>
           </div>
 
-          <div style={{ overflowX: 'auto', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', textAlign: 'left' }}>
-              <thead>
-                <tr style={{ backgroundColor: 'var(--bg-canvas)', borderBottom: '1px solid var(--border-subtle)' }}>
-                  <th style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>Fecha / Hora</th>
-                  <th style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>Tipo</th>
-                  <th style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>Símbolo</th>
-                  <th style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>Cantidad</th>
-                  <th style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>Precio</th>
-                  <th style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>Total USDT</th>
-                  <th style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>Comisión</th>
-                </tr>
-              </thead>
-              <tbody>
-                {trades.map((t, idx) => (
-                  <tr
-                    key={t.id}
-                    style={{
-                      borderBottom: '1px solid var(--border-subtle)',
-                      backgroundColor: idx % 2 === 0 ? 'transparent' : 'rgba(255, 107, 157, 0.02)',
-                    }}
-                  >
-                    <td className="font-mono" style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>{t.timestamp}</td>
-                    <td style={{ padding: '8px 12px' }}>
-                      <Badge variant={t.type === 'BUY' ? 'mint' : t.type === 'SELL' ? 'bearish' : 'lavender'}>
-                        {t.type}
-                      </Badge>
-                    </td>
-                    <td className="font-mono" style={{ padding: '8px 12px', fontWeight: 800, color: 'var(--text-bright)' }}>{t.symbol}</td>
-                    <td className="font-mono" style={{ padding: '8px 12px' }}>{t.amount || '-'}</td>
-                    <td className="font-mono" style={{ padding: '8px 12px' }}>{t.price ? `$${t.price.toLocaleString()}` : '-'}</td>
-                    <td className="font-mono" style={{ padding: '8px 12px', fontWeight: 700 }}>${t.totalUsdt.toLocaleString()}</td>
-                    <td className="font-mono" style={{ padding: '8px 12px', color: 'var(--text-muted)' }}>${t.feeUsdt?.toFixed(2) || '0.00'}</td>
+          {effectiveTrades.length === 0 ? (
+            <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+              No hay operaciones reales registradas en el historial contable.
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
+              <table className="institutional-table">
+                <thead>
+                  <tr>
+                    <th>Fecha / Hora</th>
+                    <th>Tipo</th>
+                    <th>Símbolo</th>
+                    <th>Cantidad</th>
+                    <th>Precio</th>
+                    <th>Total USDT</th>
+                    <th>Comisión</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {effectiveTrades.map((t) => (
+                    <tr key={t.id}>
+                      <td className="font-mono" style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>{t.timestamp}</td>
+                      <td style={{ padding: '8px 12px' }}>
+                        <Badge variant={t.type === 'BUY' ? 'mint' : t.type === 'SELL' ? 'bearish' : 'lavender'}>
+                          {t.type}
+                        </Badge>
+                      </td>
+                      <td className="font-mono" style={{ padding: '8px 12px', fontWeight: 800, color: 'var(--text-bright)' }}>{t.symbol}</td>
+                      <td className="font-mono" style={{ padding: '8px 12px' }}>{t.amount || '-'}</td>
+                      <td className="font-mono" style={{ padding: '8px 12px' }}>{t.price ? `$${t.price.toLocaleString()}` : '-'}</td>
+                      <td className="font-mono" style={{ padding: '8px 12px', fontWeight: 700 }}>${t.totalUsdt.toLocaleString()}</td>
+                      <td className="font-mono" style={{ padding: '8px 12px', color: 'var(--text-muted)' }}>${t.feeUsdt?.toFixed(2) || '0.00'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </Card>
       )}
 
