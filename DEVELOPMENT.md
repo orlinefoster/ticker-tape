@@ -14,36 +14,60 @@ Asegúrate de tener instaladas las siguientes herramientas:
 
 1. **Instalar Dependencias del Frontend**
    Dentro de la raíz del proyecto, instala las dependencias de Node:
-   ```bash
+
    corepack pnpm install
-   ```
+
 
 2. **Levantar el Entorno de Desarrollo**
    Ejecuta el entorno completo (Vite + backend de Tauri):
-   ```bash
+
    corepack pnpm tauri dev
-   ```
+
    *Nota: La primera vez, Cargo tardará unos minutos en compilar las dependencias de Rust.*
 
 3. **Construcción para Producción (Build)**
    Para verificar tipos y compilar el frontend, o para generar el binario final:
-   ```bash
+
    # Compilación del Frontend (TypeScript + Vite)
+
    corepack pnpm run build
    
    # Construcción del Binario de la App (Tauri)
+
    corepack pnpm tauri build
-   ```
 
-## 🧪 Pruebas (Testing)
 
-El frontend incluye pruebas unitarias y de integración utilizando **Vitest**.
-Para correr la suite de pruebas (que cubre los stores y wrappers de IPC):
-```bash
-corepack pnpm test
-```
+## 🧪 Pruebas y Verificación (Testing & Quality)
+
+El proyecto cuenta con verificación automatizada en ambos extremos de la arquitectura:
+
+1. **Frontend (Vitest & TypeScript)**:
+
+   # Ejecutar suite de pruebas unitarias/integración de React/TypeScript (60 tests)
+
+   corepack pnpm test
+
+   # Verificación de tipos en TypeScript
+
+   npx tsc --noEmit
+
+
+2. **Backend (Rust Cargo & Clippy)**:
+
+   # Correr pruebas unitarias nativas de Rust (144 tests)
+
+   cargo test --manifest-path src-tauri/Cargo.toml
+
+   # Control de lints y calidad de código Rust sin advertencias
+   
+   cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+
 
 ## 🗂️ Estructura Clave de Archivos
-- `/src`: Todo el código de React/TypeScript (Frontend).
-- `/src-tauri`: Código Rust, configuraciones de Tauri (`tauri.conf.json`) y base de datos SQLite.
-- `AGENTS.md`: Documento fundamental de coordinación para flujos SDD y gobierno de IA.
+
+- `/src/modules/`: Módulos principales divididos en subcomponentes (`dashboard/components/`, `portfolio/components/`).
+- `/src/hooks/`: Hooks personalizados desacoplados (`usePortfolioCalculator`).
+- `/src/components/ui/`: Primitivas de UI accesibles (Card, Button, Badge, ErrorBoundary) con tokens de elevación `variant="filled"`.
+- `/src/styles/`: Estilos globales y clases institucionales (`.institutional-table`, `.cyber-card`).
+- `/src-tauri`: Código Rust (trading engine, base de datos SQLite, Tauri IPC bridge).
+- `AGENTS.md`: Guía y reglas de arquitectura para coordinación de agentes AI.

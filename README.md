@@ -10,14 +10,15 @@ Ticker Tape es una plataforma de análisis de mercado, backtesting y gestión de
 - **Inteligencia Artificial Integrada**: Análisis contextual del mercado asistido por LLMs locales utilizando **Ollama**, garantizando privacidad y baja latencia.
 - **Gestor de Portafolio**: Control detallado de posiciones, balance de caja, P&L no realizado y simulación de asignación de activos.
 
-## 💻 Tech Stack
+## 💻 Tech Stack & Arquitectura
 
 - **Aplicación de Escritorio**: [Tauri v2](https://v2.tauri.app/)
-- **Backend**: Rust (Engine de trading, cliente MCP, base de datos)
-- **Frontend**: React 18, TypeScript, Vite
-- **Estado UI/Data**: Zustand 5
+- **Backend**: Rust (Engine de trading, cliente MCP, base de datos) con 144 unit tests nativos.
+- **Frontend**: React 18, TypeScript, Vite, Vitest (60 tests unitarios e integración).
+- **Diseño & UI**: Design system financiero de alta densidad, jerarquía de elevación de contenedores (`variant="filled"`), tablas institucionales zebra-striped (`.institutional-table`) y temas de alto contraste WCAG 2.2 AA.
+- **Estado UI/Data**: Zustand 5 + Custom Hooks (`usePortfolioCalculator`)
 - **Gráficos**: Lightweight Charts
-- **Base de Datos**: SQLite (Local-first)
+- **Base de Datos**: SQLite (Local-first, WAL mode)
 - **AI Integration**: Ollama + Modelos Locales
 
 ---

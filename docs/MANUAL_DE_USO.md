@@ -7,7 +7,7 @@ Bienvenido a la documentación operativa de **Ticker Tape**. Este manual detalla
 ## 1. Filosofía & Principios de la Terminal
 
 1. **Ciclo Operativo Cerrado:** En una mesa de dinero profesional, no existen herramientas aisladas. Cada indicador o señal debe conducir a una asignación de capital, una gestión de riesgo estricta y un registro patrimonial.
-2. **Estética de Alta Densidad (16:9):** Inspirada en plataformas profesionales como *NinjaTrader 8*, *Bloomberg Terminal* y *Refinitiv Workspace*. Fondos en carbón mate (`#0A0C10`), tipografía monospace tabular para números y alineación estricta de decimales, sin colores estridentes ("UI-slop").
+2. **Estética de Alta Densidad (16:9) & Elevación de Contenedores:** Inspirada en plataformas profesionales como *NinjaTrader 8*, *Bloomberg Terminal* y *Refinitiv Workspace*. Fondos en carbón mate (`#0A0C10`), elevación de superficie sutil (`variant="filled"`, `--bg-surface-elevated`) para definir contenedores clave (Torre de Control, Liquidez, IOL, Binance) sin restar legibilidad, tablas institucionales zebra-striped (`.institutional-table`) y tipografía monospace tabular (`JetBrains Mono`) para alineación estricta de decimales.
 3. **Gestión de Riesgo Van Tharp:** Ninguna operación se abre a ojo. Cada trade se dimensiona en función de **1R (el capital arriesgado)** y la distancia técnica hacia el Stop Loss.
 
 ---
@@ -100,8 +100,13 @@ Implementa las matemáticas de dimensionamiento de posición de Van Tharp:
 - Detección de clústeres de riesgo y cambios en la estructura de volatilidad.
 
 #### 📡 Alpha Rotation Radar (`/relative-perf`)
-- Cuadrantes RRG (Relative Rotation Graphs) inspirados en Julius de Kempenaer.
-- Muestra qué activos están en cuadrante **Leading** (Líderes), **Weakening** (Debilitándose), **Lagging** (Rezagados) o **Improving** (Mejorando).
+- **Cuadrantes RRG (Relative Rotation Graphs):** Inspirados en Julius de Kempenaer, mapeando fuerza relativa (RS-Ratio) y momentum (RS-Momentum).
+- **Soporte Multimercado con Presets:**
+  - **TradFi / Sectores:** Benchmark predeterminado `SPY` sobre acciones y materias primas.
+  - **Crypto / Altcoins:** Benchmark predeterminado `BTC` sobre las altcoins más líquidas (ETH, SOL, BNB, XRP, ADA, AVAX, LINK) con velas 24/7 vía Binance.
+  - **Modo Personalizado:** Selección dinámica libre de cualquier activo del universo como benchmark (ej. ETH, QQQ).
+- **Métricas Cuantitativas Enriquecidas:** Clasificación de cuadrantes (**Leading**, **Weakening**, **Lagging**, **Improving**), vector de rumbo angular (Heading 0°-360° con flechas directrices) y velocidad de aceleración de momentum.
+- **Interactividad Cruzada:** Resaltado simultáneo en el gráfico de rotación, la tabla institucional y las curvas normalizadas de rendimiento.
 
 #### 🌊 Elliott Wave (`/elliott`)
 - Conteo fractal de ondas de impulso (1-2-3-4-5) y correctivas (A-B-C).

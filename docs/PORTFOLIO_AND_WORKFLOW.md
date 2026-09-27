@@ -98,6 +98,8 @@ Para evitar bloqueos por límite de peticiones (Yahoo Finance ~200 req/min, lím
 ## 5. Diseño e Identidad Visual (Bloomberg / NinjaTrader Dark)
 
 - **Canvas & Paneles:** Fondo carbón mate (`#0A0C10` y `#11141D`), bordes sutiles en `#232838`.
+- **Elevación de Contenedores (`variant="filled"`)**: Paneles opacos sutiles con relleno de fondo (`--bg-surface-elevated`) para remarcar contenedores clave en la Torre de Control (Liquidez, IOL, Binance) y vistas de cartera sin sobrecargar la pantalla.
+- **Tablas Institucionales (`.institutional-table`)**: Relleno alternado (zebra striping), cabeceras *sticky*, interacción hover sutil y formato condicional neutro (`.row-bullish`, `.row-bearish`) para legibilidad financiera superior.
 - **Tipografía:** Números financieros en **monospace tabular** (`JetBrains Mono`), garantizando alineación visual estricta de decimales y precios.
 - **Color Funcional:**
   - Verde institucional (`#10B981`) para balances positivos y señales de compra.
