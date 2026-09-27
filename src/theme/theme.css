@@ -1,18 +1,29 @@
 :root {
   /* ── Institutional Terminal Matrix (Bloomberg / NinjaTrader Dark Slate) ── */
   
-  /* Canvas & Surfaces */
+  /* Canvas & Surfaces Hierarchy (Layering system preventing recursion clutter) */
   --bg-canvas: #0A0C10;
   --bg-surface: #11141D;
-  --bg-surface-card: #161A26;
-  --bg-surface-card-hover: #1E2333;
-  --bg-surface-glass: rgba(22, 26, 38, 0.88);
+  --bg-surface-card: #151926;
+  --bg-surface-card-hover: #1D2335;
+  --bg-surface-elevated: #1A2030;
+  --bg-surface-subtle: rgba(255, 255, 255, 0.024);
+  --bg-surface-glass: rgba(21, 25, 38, 0.88);
   --bg-surface-overlay: rgba(10, 12, 16, 0.85);
+
+  /* Financial Tables Design Tokens */
+  --table-header-bg: #111522;
+  --table-row-odd: transparent;
+  --table-row-even: rgba(255, 255, 255, 0.018);
+  --table-row-hover: rgba(59, 130, 246, 0.075);
+  --table-conditional-bullish: rgba(16, 185, 129, 0.04);
+  --table-conditional-bearish: rgba(239, 68, 68, 0.04);
+  --table-conditional-warning: rgba(245, 158, 11, 0.04);
 
   /* Legacy Compatibility Mappings */
   --bg-primary: #0A0C10;
   --bg-secondary: #11141D;
-  --bg-tertiary: #161A26;
+  --bg-tertiary: #151926;
   
   /* Typography */
   --text-primary: #E2E8F0;
@@ -91,6 +102,15 @@
   --bg-surface: #FFFFFF;
   --bg-surface-card: #F1F5F9;
   --bg-surface-card-hover: #E2E8F0;
+  --bg-surface-elevated: #E8EEF5;
+  --bg-surface-subtle: rgba(0, 0, 0, 0.025);
+  --table-header-bg: #E2E8F0;
+  --table-row-odd: transparent;
+  --table-row-even: rgba(0, 0, 0, 0.02);
+  --table-row-hover: rgba(59, 130, 246, 0.08);
+  --table-conditional-bullish: rgba(16, 185, 129, 0.08);
+  --table-conditional-bearish: rgba(239, 68, 68, 0.08);
+  --table-conditional-warning: rgba(245, 158, 11, 0.08);
   --bg-primary: #F8FAFC;
   --bg-secondary: #FFFFFF;
   --bg-tertiary: #F1F5F9;

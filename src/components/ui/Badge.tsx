@@ -1,12 +1,12 @@
-﻿import React from 'react';
+import React from 'react';
 
 export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
-  variant?: 'sakura' | 'mint' | 'lavender' | 'peach' | 'bullish' | 'bearish' | 'neutral';
+  variant?: 'primary' | 'bullish' | 'bearish' | 'warning' | 'neutral' | 'sakura' | 'mint' | 'lavender' | 'peach';
   pulse?: boolean;
 }
 
 export const Badge: React.FC<BadgeProps> = ({
-  variant = 'sakura',
+  variant = 'primary',
   pulse = false,
   children,
   style,
@@ -14,49 +14,57 @@ export const Badge: React.FC<BadgeProps> = ({
 }) => {
   const getVariantStyles = () => {
     switch (variant) {
+      case 'primary':
+        return {
+          color: 'var(--accent)',
+          bg: 'rgba(59, 130, 246, 0.12)',
+          border: 'rgba(59, 130, 246, 0.3)',
+          glow: 'rgba(59, 130, 246, 0.25)',
+        };
       case 'mint':
       case 'bullish':
         return {
           color: 'var(--signal-bullish)',
-          bg: 'rgba(0, 245, 160, 0.12)',
-          border: 'rgba(0, 245, 160, 0.3)',
-          glow: 'rgba(0, 245, 160, 0.25)',
+          bg: 'rgba(16, 185, 129, 0.12)',
+          border: 'rgba(16, 185, 129, 0.3)',
+          glow: 'rgba(16, 185, 129, 0.25)',
         };
       case 'bearish':
         return {
           color: 'var(--signal-bearish)',
-          bg: 'rgba(255, 51, 102, 0.12)',
-          border: 'rgba(255, 51, 102, 0.3)',
-          glow: 'rgba(255, 51, 102, 0.25)',
+          bg: 'rgba(239, 68, 68, 0.12)',
+          border: 'rgba(239, 68, 68, 0.3)',
+          glow: 'rgba(239, 68, 68, 0.25)',
+        };
+      case 'warning':
+      case 'peach':
+        return {
+          color: 'var(--signal-warning)',
+          bg: 'rgba(245, 158, 11, 0.12)',
+          border: 'rgba(245, 158, 11, 0.3)',
+          glow: 'rgba(245, 158, 11, 0.25)',
         };
       case 'lavender':
         return {
           color: 'var(--accent-lavender)',
-          bg: 'rgba(179, 136, 255, 0.12)',
-          border: 'rgba(179, 136, 255, 0.3)',
-          glow: 'rgba(179, 136, 255, 0.25)',
-        };
-      case 'peach':
-        return {
-          color: 'var(--accent-peach)',
-          bg: 'rgba(255, 224, 130, 0.12)',
-          border: 'rgba(255, 224, 130, 0.3)',
-          glow: 'rgba(255, 224, 130, 0.25)',
+          bg: 'rgba(129, 140, 248, 0.12)',
+          border: 'rgba(129, 140, 248, 0.3)',
+          glow: 'rgba(129, 140, 248, 0.25)',
         };
       case 'neutral':
         return {
           color: 'var(--signal-neutral)',
-          bg: 'rgba(140, 147, 181, 0.12)',
-          border: 'rgba(140, 147, 181, 0.25)',
+          bg: 'rgba(100, 116, 139, 0.12)',
+          border: 'rgba(100, 116, 139, 0.25)',
           glow: 'transparent',
         };
       case 'sakura':
       default:
         return {
-          color: 'var(--accent-sakura)',
-          bg: 'rgba(255, 107, 157, 0.12)',
-          border: 'rgba(255, 107, 157, 0.3)',
-          glow: 'rgba(255, 107, 157, 0.25)',
+          color: 'var(--accent)',
+          bg: 'rgba(59, 130, 246, 0.12)',
+          border: 'rgba(59, 130, 246, 0.3)',
+          glow: 'rgba(59, 130, 246, 0.25)',
         };
     }
   };
@@ -65,6 +73,7 @@ export const Badge: React.FC<BadgeProps> = ({
 
   return (
     <span
+      role={props.role || 'status'}
       style={{
         display: 'inline-flex',
         alignItems: 'center',

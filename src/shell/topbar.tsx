@@ -1,9 +1,14 @@
+import { useState } from 'react';
 import { useTheme } from '@/theme/useTheme';
 import { useServiceStatusStore, OverrideSetting } from '@/store/serviceStatusStore';
+import { usePortfolioStore } from '@/store/portfolioStore';
+import { DataIntegrityModal } from '@/components/DataIntegrityModal';
 
 export function TopBar() {
   const { theme, toggleTheme } = useTheme();
   const { status, override, setOverride } = useServiceStatusStore();
+  const rates = usePortfolioStore((state) => state.rates);
+  const [isIntegrityOpen, setIsIntegrityOpen] = useState(false);
 
   const renderBadge = (name: string, value: 'connected' | 'mock' | 'disconnected', tooltipPrefix: string) => {
     const config = {
@@ -14,6 +19,8 @@ export function TopBar() {
 
     return (
       <div
+        role="status"
+        aria-label={`${name}: ${config.title}`}
         title={`${tooltipPrefix}: ${config.title}`}
         style={{
           display: 'flex',
@@ -32,7 +39,7 @@ export function TopBar() {
           userSelect: 'none',
         }}
       >
-        <span style={{ fontSize: '0.65rem' }}>{config.symbol}</span>
+        <span aria-hidden="true" style={{ fontSize: '0.65rem' }}>{config.symbol}</span>
         <span>{name}</span>
       </div>
     );
@@ -108,11 +115,11 @@ export function TopBar() {
         }}
       >
         <span>
-          CCL: <strong style={{ color: 'var(--text-bright)' }}>$1,320</strong>
+          CCL: <strong style={{ color: 'var(--text-bright)' }}>${rates.ccl}</strong>
         </span>
         <span style={{ color: 'var(--border)' }}>|</span>
         <span>
-          MEP: <strong style={{ color: 'var(--text-bright)' }}>$1,295</strong>
+          MEP: <strong style={{ color: 'var(--text-bright)' }}>${rates.mep}</strong>
         </span>
         <span style={{ color: 'var(--border)' }}>|</span>
         <span>
@@ -130,11 +137,68 @@ export function TopBar() {
           {renderBadge('AI', status.ai, 'Servicio de IA (Ollama)')}
         </div>
 
+        {/* Global Environment Badge */}
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          {override === 'Real' ? (
+            <span
+              style={{
+                padding: '2px 8px',
+                borderRadius: 'var(--radius-sm)',
+                backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                border: '1px solid rgba(16, 185, 129, 0.35)',
+                color: 'var(--signal-bullish)',
+                fontSize: '0.72rem',
+                fontWeight: 700,
+                fontFamily: 'monospace',
+                letterSpacing: '0.04em',
+              }}
+              title="Modo Real activo: Datos auténticos verificados sin simulación sintética"
+            >
+              🟢 REAL
+            </span>
+          ) : override === 'Mock' ? (
+            <span
+              style={{
+                padding: '2px 8px',
+                borderRadius: 'var(--radius-sm)',
+                backgroundColor: 'rgba(245, 158, 11, 0.15)',
+                border: '1px solid rgba(245, 158, 11, 0.35)',
+                color: 'var(--signal-warning)',
+                fontSize: '0.72rem',
+                fontWeight: 700,
+                fontFamily: 'monospace',
+                letterSpacing: '0.04em',
+              }}
+              title="Modo Simulación activo: Datos sintéticos/paper trading (órdenes reales bloqueadas)"
+            >
+              ⚠️ SIMULACIÓN
+            </span>
+          ) : (
+            <span
+              style={{
+                padding: '2px 8px',
+                borderRadius: 'var(--radius-sm)',
+                backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                border: '1px solid rgba(59, 130, 246, 0.35)',
+                color: 'var(--accent)',
+                fontSize: '0.72rem',
+                fontWeight: 700,
+                fontFamily: 'monospace',
+                letterSpacing: '0.04em',
+              }}
+              title="Modo Automático: Intenta real con fallback dinámico"
+            >
+              ⚙️ AUTO
+            </span>
+          )}
+        </div>
+
         {/* Mode Selector */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
           <select
             value={override}
             onChange={(e) => setOverride(e.target.value as OverrideSetting)}
+            aria-label="Seleccionar modo de conectividad de servicios"
             title="Seleccionar modo de conectividad"
             style={{
               backgroundColor: 'var(--bg-surface-card)',
@@ -149,15 +213,40 @@ export function TopBar() {
               fontFamily: 'monospace',
             }}
           >
-            <option value="Auto">Auto</option>
-            <option value="Real">Real</option>
-            <option value="Mock">Mock</option>
+            <option value="Real">🟢 Modo Real</option>
+            <option value="Mock">🟡 Simulación (Paper)</option>
+            <option value="Auto">⚙️ Auto</option>
           </select>
         </div>
+
+        {/* Data Integrity & Cache Inspection */}
+        <button
+          onClick={() => setIsIntegrityOpen(true)}
+          title="Gestor de Integridad de Datos y Caché SQLite"
+          aria-label="Integridad de Datos"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '5px',
+            background: 'var(--bg-surface-card)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-sm)',
+            padding: '3px 8px',
+            cursor: 'pointer',
+            fontSize: '0.72rem',
+            fontWeight: 600,
+            fontFamily: 'monospace',
+            color: 'var(--text-secondary)',
+          }}
+        >
+          <span>🛡️</span>
+          <span>Datos</span>
+        </button>
 
         {/* Theme Toggle */}
         <button
           onClick={toggleTheme}
+          aria-label={theme === 'light' ? 'Cambiar a modo oscuro' : 'Cambiar a modo claro'}
           title={theme === 'light' ? 'Cambiar a modo oscuro' : 'Cambiar a modo claro'}
           style={{
             background: 'var(--bg-surface-card)',
@@ -173,6 +262,11 @@ export function TopBar() {
           {theme === 'light' ? '🌙' : '☀️'}
         </button>
       </div>
+
+      <DataIntegrityModal
+        isOpen={isIntegrityOpen}
+        onClose={() => setIsIntegrityOpen(false)}
+      />
     </header>
   );
 }

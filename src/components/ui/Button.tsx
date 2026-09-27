@@ -1,13 +1,13 @@
 import React from 'react';
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'sakura' | 'mint' | 'lavender' | 'holo' | 'outline' | 'ghost';
+  variant?: 'primary' | 'secondary' | 'danger' | 'bullish' | 'bearish' | 'sakura' | 'mint' | 'lavender' | 'holo' | 'outline' | 'ghost';
   size?: 'sm' | 'md' | 'lg';
   isLoading?: boolean;
 }
 
 export const Button: React.FC<ButtonProps> = ({
-  variant = 'sakura',
+  variant = 'primary',
   size = 'md',
   isLoading = false,
   children,
@@ -29,33 +29,50 @@ export const Button: React.FC<ButtonProps> = ({
 
   const getVariantStyles = (): React.CSSProperties => {
     switch (variant) {
+      case 'primary':
+        return {
+          background: 'var(--accent)',
+          color: '#FFFFFF',
+          border: 'none',
+          boxShadow: 'var(--shadow-card)',
+        };
+      case 'secondary':
+        return {
+          background: 'var(--bg-surface-card)',
+          color: 'var(--text-bright)',
+          border: '1px solid var(--border)',
+        };
+      case 'danger':
+      case 'bearish':
+        return {
+          background: 'var(--signal-bearish)',
+          color: '#FFFFFF',
+          border: 'none',
+        };
+      case 'bullish':
+      case 'mint':
+        return {
+          background: 'var(--signal-bullish)',
+          color: '#0A0C10',
+          border: 'none',
+        };
       case 'holo':
         return {
           background: 'var(--holo-gradient)',
-          backgroundSize: '200% 200%',
-          color: '#0B0D17',
-          border: 'none',
-          boxShadow: 'var(--holo-glow)',
-        };
-      case 'mint':
-        return {
-          background: 'var(--accent-mint)',
-          color: '#0B0D17',
-          border: 'none',
-          boxShadow: '0 0 14px rgba(0, 245, 212, 0.3)',
+          color: 'var(--text-bright)',
+          border: '1px solid var(--border)',
         };
       case 'lavender':
         return {
           background: 'var(--accent-lavender)',
-          color: '#0B0D17',
+          color: '#0A0C10',
           border: 'none',
-          boxShadow: '0 0 14px rgba(179, 136, 255, 0.3)',
         };
       case 'outline':
         return {
           background: 'transparent',
-          color: 'var(--accent-sakura)',
-          border: '1px solid var(--accent-sakura)',
+          color: 'var(--accent)',
+          border: '1px solid var(--accent)',
         };
       case 'ghost':
         return {
@@ -66,17 +83,19 @@ export const Button: React.FC<ButtonProps> = ({
       case 'sakura':
       default:
         return {
-          background: 'var(--accent-sakura)',
-          color: '#0B0D17',
+          background: 'var(--accent)',
+          color: '#FFFFFF',
           border: 'none',
-          boxShadow: '0 0 14px rgba(255, 107, 157, 0.35)',
         };
     }
   };
 
   return (
     <button
+      type={props.type || 'button'}
       disabled={disabled || isLoading}
+      aria-busy={isLoading}
+      aria-disabled={disabled || isLoading}
       style={{
         display: 'inline-flex',
         alignItems: 'center',
@@ -88,14 +107,13 @@ export const Button: React.FC<ButtonProps> = ({
         opacity: disabled ? 0.5 : 1,
         transition: 'all var(--transition-fast)',
         userSelect: 'none',
-        outline: 'none',
         ...getSizeStyles(),
         ...getVariantStyles(),
         ...style,
       }}
       {...props}
     >
-      {isLoading && <span style={{ animation: 'spin 1s linear infinite' }}>⏳</span>}
+      {isLoading && <span role="status" aria-label="Cargando..." style={{ animation: 'spin 1s linear infinite' }}>⏳</span>}
       {children}
     </button>
   );

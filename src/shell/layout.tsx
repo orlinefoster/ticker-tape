@@ -1,21 +1,24 @@
-import { useState, type ReactNode } from 'react';
+import { useState, lazy, Suspense, type ReactNode } from 'react';
 import { useUIStore } from '@/store/uiStore';
 import { Sidebar } from './sidebar';
 import { TopBar } from './topbar';
-import { Dashboard } from '@/modules/dashboard';
-import IntermarketModule from '@/modules/intermarket';
-import TopologyModule from '@/modules/topology';
-import ElliottWaveModule from '@/modules/elliott_wave';
-import RelativePerfModule from '@/modules/relative_perf';
-import BacktestingModule from '@/modules/backtesting';
-import PortfolioModule from '@/modules/portfolio';
-import MonitorModule from '@/modules/monitor';
-import MarketChartModule from '@/modules/chart';
-import ProvidersModule from '@/modules/providers';
-import TopDownModule from '@/modules/top_down';
-import WikiModule from '@/modules/wiki';
 import { ErrorBoundary } from '@/lib/errorBoundary';
 import './styles.css';
+
+const Dashboard = lazy(() => import('@/modules/dashboard').then((m) => ({ default: m.Dashboard })));
+const TopDownModule = lazy(() => import('@/modules/top_down'));
+const MarketChartModule = lazy(() => import('@/modules/chart'));
+const CarteraModule = lazy(() => import('@/modules/cartera'));
+const CarteraIolModule = lazy(() => import('@/modules/cartera_iol'));
+const PortfolioModule = lazy(() => import('@/modules/portfolio'));
+const ProvidersModule = lazy(() => import('@/modules/providers'));
+const IntermarketModule = lazy(() => import('@/modules/intermarket'));
+const TopologyModule = lazy(() => import('@/modules/topology'));
+const RelativePerfModule = lazy(() => import('@/modules/relative_perf'));
+const BacktestingModule = lazy(() => import('@/modules/backtesting'));
+const ElliottWaveModule = lazy(() => import('@/modules/elliott_wave'));
+const MonitorModule = lazy(() => import('@/modules/monitor'));
+const WikiModule = lazy(() => import('@/modules/wiki'));
 
 interface ModuleEntry {
   name: string;
@@ -26,18 +29,52 @@ const modules: Record<string, ModuleEntry> = {
   '/': { name: 'Dashboard', component: <Dashboard /> },
   '/top-down': { name: 'Top-Down Engine', component: <TopDownModule /> },
   '/chart': { name: 'Gráfico de Mercado', component: <MarketChartModule /> },
-  '/cartera': { name: 'Carteras & Patrimonio', component: <PortfolioModule /> },
-  '/cartera-iol': { name: 'Carteras & Patrimonio', component: <PortfolioModule /> },
+  '/cartera': { name: 'Cartera Binance Spot', component: <CarteraModule /> },
+  '/cartera-iol': { name: 'Cartera Argentina IOL', component: <CarteraIolModule /> },
+  '/portfolio': { name: 'Carteras & Patrimonio', component: <PortfolioModule /> },
   '/providers': { name: 'Diagnóstico de Proveedores', component: <ProvidersModule /> },
   '/intermarket': { name: 'Intermarket', component: <IntermarketModule /> },
   '/topology': { name: 'Market Topology', component: <TopologyModule /> },
   '/relative-perf': { name: 'Alpha Rotation Radar', component: <RelativePerfModule /> },
   '/backtesting': { name: 'Backtesting Module', component: <BacktestingModule /> },
   '/elliott': { name: 'Elliott Wave', component: <ElliottWaveModule /> },
-  '/portfolio': { name: 'Carteras & Patrimonio', component: <PortfolioModule /> },
   '/monitor': { name: 'Monitor', component: <MonitorModule /> },
   '/wiki': { name: 'Wiki & Métodos', component: <WikiModule /> },
 };
+
+function ModuleLoadingFallback({ name }: { name: string }) {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      aria-label={`Cargando módulo ${name}...`}
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '400px',
+        height: '100%',
+        gap: '16px',
+        color: 'var(--text-secondary)',
+      }}
+    >
+      <div
+        style={{
+          width: '28px',
+          height: '28px',
+          borderRadius: '50%',
+          border: '2px solid var(--border)',
+          borderTopColor: 'var(--accent)',
+          animation: 'spin 0.8s linear infinite',
+        }}
+      />
+      <span className="font-mono" style={{ fontSize: '0.8rem', letterSpacing: '0.05em' }}>
+        INICIALIZANDO {name.toUpperCase()}...
+      </span>
+    </div>
+  );
+}
 
 function ModulePlaceholder({ name }: { name: string }) {
   return (
@@ -340,7 +377,9 @@ export function Shell() {
           )}
 
           <ErrorBoundary key={activeContainer ? activeContainer.id : activeRoute}>
-            {entry.component}
+            <Suspense fallback={<ModuleLoadingFallback name={entry.name} />}>
+              {entry.component}
+            </Suspense>
           </ErrorBoundary>
         </main>
       </div>
