@@ -113,7 +113,7 @@ fn detect_swings(
 /// - Wave 2 retraces < 100% of wave 1
 /// - Wave 4 does NOT overlap wave 1
 fn is_valid_impulse(swings: &[(NaiveDate, f64, bool)]) -> bool {
-    if swings.len() < 5 {
+    if swings.len() < 6 {
         return false;
     }
 
@@ -446,6 +446,18 @@ mod tests {
             (NaiveDate::from_ymd_opt(2024, 1, 4).unwrap(), 130.0, true),
             (NaiveDate::from_ymd_opt(2024, 1, 5).unwrap(), 140.0, true),
             (NaiveDate::from_ymd_opt(2024, 1, 6).unwrap(), 150.0, true),
+        ];
+        assert!(!is_valid_impulse(&swings));
+    }
+
+    #[test]
+    fn test_is_valid_impulse_five_swings_does_not_panic() {
+        let swings = vec![
+            (NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(), 100.0, false),
+            (NaiveDate::from_ymd_opt(2024, 1, 2).unwrap(), 110.0, true),
+            (NaiveDate::from_ymd_opt(2024, 1, 3).unwrap(), 105.0, false),
+            (NaiveDate::from_ymd_opt(2024, 1, 4).unwrap(), 125.0, true),
+            (NaiveDate::from_ymd_opt(2024, 1, 5).unwrap(), 118.0, false),
         ];
         assert!(!is_valid_impulse(&swings));
     }

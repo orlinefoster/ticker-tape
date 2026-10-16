@@ -1,10 +1,15 @@
 import { Shell } from './shell/layout';
 import { useTheme } from './theme/useTheme';
+import { AuthGate } from './components/auth/AuthGate';
 
 function App() {
   useTheme(); // Apply theme on mount and react to changes
 
-  return <Shell />;
+  return (
+    <AuthGate>
+      <Shell />
+    </AuthGate>
+  );
 }
 
 export default App;

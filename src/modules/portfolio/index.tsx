@@ -34,11 +34,12 @@ export default function PortfolioModule() {
   const metrics = usePortfolioCalculator();
   const isReal = override === 'Real';
 
-  // In Real mode, simulated sandbox holdings are isolated to zero unless real connected assets exist
-  const effectiveCashHoldings = isReal ? [] : cashHoldings;
-  const effectiveIolHoldings = isReal ? [] : iolHoldings;
-  const effectiveBinanceHoldings = isReal ? [] : binanceHoldings;
-  const effectiveTransactions = isReal ? [] : transactions;
+  // In Mock mode or Auto/Real, effective holdings come from the unified store.
+  // Real mode displays real holdings stored in usePortfolioStore (never wiped to empty!).
+  const effectiveCashHoldings = cashHoldings;
+  const effectiveIolHoldings = iolHoldings;
+  const effectiveBinanceHoldings = binanceHoldings;
+  const effectiveTransactions = transactions;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>

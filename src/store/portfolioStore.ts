@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { createJSONStorage, persist } from 'zustand/middleware';
+import { secureVaultStorage } from '../lib/secureStorage';
 
 export type PortfolioType = 'cash' | 'iol' | 'binance';
 
@@ -374,6 +375,7 @@ export const usePortfolioStore = create<PortfolioState>()(
     }),
     {
       name: 'ticker-tape-portfolio-v1',
+      storage: createJSONStorage(() => secureVaultStorage),
       partialize: (state) => ({
         rates: state.rates,
         cashHoldings: state.cashHoldings,

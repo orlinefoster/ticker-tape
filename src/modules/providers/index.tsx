@@ -337,14 +337,24 @@ export default function ProvidersModule() {
   };
 
   // --- Test Fetch Handler ---
-  const handleTestFetch = async () => {
-    if (!symbol.trim()) return;
+  const handleTestFetch = async (
+    overrideSymbol?: string,
+    overrideRange?: string,
+    overrideForce?: boolean,
+    overrideTarget?: string
+  ) => {
+    const sym = (overrideSymbol ?? symbol).trim();
+    if (!sym) return;
+    const rng = overrideRange ?? range;
+    const force = overrideForce ?? forceRefresh;
+    const target = overrideTarget ?? targetProvider;
+
     setLoading(true);
     setErrorMessage(null);
     setTestResult(null);
 
     try {
-      const result = await commands.testProviderFetch(symbol.trim(), range, forceRefresh, targetProvider);
+      const result = await commands.testProviderFetch(sym, rng, force, target);
       setTestResult(result);
       loadCacheOverview();
     } catch (err: unknown) {
@@ -1163,7 +1173,7 @@ CREATE POLICY "Allow public insert/upsert" ON market_candles FOR INSERT WITH CHE
               <Button
                 variant="holo"
                 size="md"
-                onClick={handleTestFetch}
+                onClick={() => handleTestFetch()}
                 isLoading={loading}
                 disabled={loading || !symbol.trim()}
               >
@@ -1597,7 +1607,7 @@ CREATE POLICY "Allow public insert/upsert" ON market_candles FOR INSERT WITH CHE
                               setForceRefresh(false);
                               setTargetProvider('cache');
                               setMainTab('router');
-                              handleTestFetch();
+                              handleTestFetch(item.symbol, undefined, false, 'cache');
                             }}
                             style={{
                               padding: '3px 8px',

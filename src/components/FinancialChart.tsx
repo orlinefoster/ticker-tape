@@ -183,7 +183,7 @@ export function FinancialChart({
     if (!mainSeriesRef.current || !data) return;
     mainSeriesRef.current.setData(data as any);
 
-    if (markers.length > 0 && mainSeriesRef.current.setMarkers) {
+    if (mainSeriesRef.current.setMarkers) {
       mainSeriesRef.current.setMarkers(markers as unknown as SeriesMarker<Time>[]);
     }
 
@@ -191,6 +191,31 @@ export function FinancialChart({
       chartRef.current.timeScale().fitContent();
     }
   }, [data, markers, autoFit]);
+
+  // Update overlays dynamically when overlays prop changes
+  useEffect(() => {
+    if (!chartRef.current) return;
+
+    // Remove existing overlay series
+    overlaySeriesRef.current.forEach((series) => {
+      try {
+        chartRef.current?.removeSeries(series);
+      } catch {
+        // Ignore
+      }
+    });
+
+    // Re-create overlay series with new data
+    overlaySeriesRef.current = overlays.map((overlay) => {
+      const lineSeries = chartRef.current!.addLineSeries({
+        color: overlay.color,
+        lineWidth: (overlay.lineWidth ?? 2) as any,
+        title: overlay.name,
+      });
+      lineSeries.setData(overlay.data as any);
+      return lineSeries;
+    });
+  }, [overlays]);
 
   return (
     <div

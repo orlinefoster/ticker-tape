@@ -6,6 +6,7 @@ import type { MarketSignal } from '../types';
 interface VanTharpModalProps {
   signal: MarketSignal;
   totalEquityUsd: number;
+  cclRate?: number;
   onClose: () => void;
   onExecute: (result: {
     symbol: string;
@@ -18,22 +19,27 @@ interface VanTharpModalProps {
     totalCapital: number;
     riskAmount: number;
     rMultiple: number;
+    currency: 'USD' | 'ARS';
   }) => void;
 }
 
 export const VanTharpModal: React.FC<VanTharpModalProps> = ({
   signal,
   totalEquityUsd,
+  cclRate = 1200,
   onClose,
   onExecute,
 }) => {
+  const isArs = signal.currency === 'ARS';
+  const effectiveEquity = isArs ? totalEquityUsd * cclRate : totalEquityUsd;
+
   const [riskPct, setRiskPct] = useState<number>(1.0); // 1R = 1.0% equity
   const [entryPrice, setEntryPrice] = useState<number>(signal.suggestedEntry);
   const [stopPrice, setStopPrice] = useState<number>(signal.suggestedStop);
   const [targetPrice, setTargetPrice] = useState<number>(signal.suggestedTarget);
 
   const sizing = calculatePositionSize({
-    totalEquity: totalEquityUsd,
+    totalEquity: effectiveEquity,
     riskPercentage: riskPct,
     entryPrice,
     stopLossPrice: stopPrice,
@@ -52,8 +58,9 @@ export const VanTharpModal: React.FC<VanTharpModalProps> = ({
       stopLossPrice: stopPrice,
       targetPrice,
       totalCapital: sizing.totalCapitalRequired,
-      riskAmount: sizing.totalRiskAmount,
+      riskAmount: isArs ? sizing.totalRiskAmount / cclRate : sizing.totalRiskAmount,
       rMultiple: sizing.rMultipleTarget || 0,
+      currency: signal.currency || (signal.targetPortfolio === 'binance' ? 'USD' : 'ARS'),
     });
   };
 
@@ -196,9 +203,9 @@ export const VanTharpModal: React.FC<VanTharpModalProps> = ({
           </div>
 
           <div>
-            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>1R EN RIESGO ($)</div>
+            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>1R EN RIESGO ({isArs ? 'ARS' : 'USD'})</div>
             <div className="font-mono" style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--signal-bearish)' }}>
-              ${sizing.totalRiskAmount.toFixed(0)}
+              ${sizing.totalRiskAmount.toFixed(0)} {isArs ? 'ARS' : 'USD'}
             </div>
             <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>{riskPct}% de la cuenta</div>
           </div>
@@ -227,7 +234,7 @@ export const VanTharpModal: React.FC<VanTharpModalProps> = ({
         >
           <span style={{ color: 'var(--text-secondary)' }}>Capital Total Requerido:</span>
           <span className="font-mono" style={{ fontWeight: 700, color: 'var(--text-bright)' }}>
-            ${sizing.totalCapitalRequired.toLocaleString()} {signal.targetPortfolio === 'binance' ? 'USDT' : 'ARS'}
+            ${sizing.totalCapitalRequired.toLocaleString()} {isArs ? 'ARS' : (signal.targetPortfolio === 'binance' ? 'USDT' : 'USD')}
           </span>
         </div>
 

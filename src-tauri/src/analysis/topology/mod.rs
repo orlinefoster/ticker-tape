@@ -76,24 +76,60 @@ impl AnalysisModule for TopologyModule {
         };
 
         // Fetch price data for each symbol.
-        let mut price_data: Vec<(String, Vec<f64>)> = Vec::new();
+        let mut raw_bars: Vec<(String, Vec<crate::trading::models::OHLCVBar>)> = Vec::new();
         for &symbol in &symbols {
-            match MarketDataRepository::get_bars(&ctx.db, symbol, &from, &to).await {
-                Ok(bars) => {
-                    let closes: Vec<f64> = bars.iter().map(|b| b.close).collect();
-                    if !closes.is_empty() {
-                        price_data.push((symbol.to_string(), closes));
-                    }
+            let clean = symbol.trim().to_uppercase();
+            match MarketDataRepository::get_bars(&ctx.db, &clean, &from, &to).await {
+                Ok(bars) if !bars.is_empty() => {
+                    raw_bars.push((clean, bars));
                 }
+                Ok(_) => {}
                 Err(e) => {
-                    tracing::warn!("[Topology] No data for {}: {}", symbol, e);
+                    tracing::warn!("[Topology] No data for {}: {}", clean, e);
                 }
             }
         }
 
-        if price_data.is_empty() {
+        if raw_bars.is_empty() {
             anyhow::bail!("Topology analysis requires at least one symbol with data");
         }
+
+        // Align bars by common calendar dates when multiple symbols share >= 15 dates
+        let price_data: Vec<(String, Vec<f64>)> = if raw_bars.len() > 1 {
+            let mut common_dates: Option<std::collections::BTreeSet<chrono::NaiveDate>> = None;
+            for (_, bars) in &raw_bars {
+                let dates: std::collections::BTreeSet<chrono::NaiveDate> =
+                    bars.iter().map(|b| b.date).collect();
+                common_dates = Some(match common_dates {
+                    None => dates,
+                    Some(acc) => acc.intersection(&dates).copied().collect(),
+                });
+            }
+            let common = common_dates.unwrap_or_default();
+            if common.len() >= 15 {
+                raw_bars
+                    .into_iter()
+                    .map(|(sym, bars)| {
+                        let closes = bars
+                            .into_iter()
+                            .filter(|b| common.contains(&b.date))
+                            .map(|b| b.close)
+                            .collect();
+                        (sym, closes)
+                    })
+                    .collect()
+            } else {
+                raw_bars
+                    .into_iter()
+                    .map(|(sym, bars)| (sym, bars.into_iter().map(|b| b.close).collect()))
+                    .collect()
+            }
+        } else {
+            raw_bars
+                .into_iter()
+                .map(|(sym, bars)| (sym, bars.into_iter().map(|b| b.close).collect()))
+                .collect()
+        };
 
         // Compute rankings.
         let rankings = ranking::compute_rankings(&price_data);

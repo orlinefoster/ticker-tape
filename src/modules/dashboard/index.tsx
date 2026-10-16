@@ -23,6 +23,7 @@ const INITIAL_SIGNALS: MarketSignal[] = [
     suggestedStop: 535.0,
     suggestedTarget: 610.0,
     targetPortfolio: 'iol',
+    currency: 'USD',
   },
   {
     symbol: 'BTC',
@@ -36,6 +37,7 @@ const INITIAL_SIGNALS: MarketSignal[] = [
     suggestedStop: 63500.0,
     suggestedTarget: 75000.0,
     targetPortfolio: 'binance',
+    currency: 'USD',
   },
   {
     symbol: 'GGAL',
@@ -49,6 +51,7 @@ const INITIAL_SIGNALS: MarketSignal[] = [
     suggestedStop: 4420.0,
     suggestedTarget: 5410.0,
     targetPortfolio: 'iol',
+    currency: 'ARS',
   },
   {
     symbol: 'AAPL',
@@ -62,6 +65,7 @@ const INITIAL_SIGNALS: MarketSignal[] = [
     suggestedStop: 218.0,
     suggestedTarget: 254.0,
     targetPortfolio: 'iol',
+    currency: 'USD',
   },
 ];
 
@@ -85,6 +89,7 @@ export function Dashboard() {
     totalCapital: number;
     riskAmount: number;
     rMultiple: number;
+    currency: 'USD' | 'ARS';
   }) => {
     if (order.targetPortfolio === 'binance') {
       addBinanceHolding({
@@ -105,23 +110,30 @@ export function Dashboard() {
         notes: `Orden Van Tharp: Stop en $${order.stopLossPrice}, Target en $${order.targetPrice} (${order.rMultiple.toFixed(1)}R)`,
       });
     } else {
+      const ccl = rates.ccl || 1200;
+      // If order is priced in USD (CEDEARs like SPY, AAPL), convert to ARS for IOL holding
+      const isUsd = order.currency === 'USD';
+      const priceArs = isUsd ? Math.round(order.entryPrice * ccl) : order.entryPrice;
+      const totalArs = isUsd ? Math.round(order.totalCapital * ccl) : order.totalCapital;
+
       addIOLHolding({
         symbol: order.symbol,
         name: order.name,
         assetType: order.symbol === 'GGAL' ? 'ACCION_LOCAL' : 'CEDEAR',
         nominalQuantity: order.quantity,
-        avgBuyPriceArs: order.entryPrice,
-        currentPriceArs: order.entryPrice,
+        avgBuyPriceArs: priceArs,
+        currentPriceArs: priceArs,
         currencyExposure: order.symbol === 'GGAL' ? 'ARS' : 'USD_CCL',
+        cedearRatio: order.symbol === 'AAPL' ? '10:1' : '20:1',
       });
       addTransaction({
         portfolioType: 'iol',
         type: 'COMPRA',
         symbol: order.symbol,
         quantity: order.quantity,
-        price: order.entryPrice,
+        price: priceArs,
         currency: 'ARS',
-        totalNominal: order.totalCapital,
+        totalNominal: totalArs,
         notes: `Orden Van Tharp: Stop en $${order.stopLossPrice}, Target en $${order.targetPrice} (${order.rMultiple.toFixed(1)}R)`,
       });
     }
@@ -308,6 +320,7 @@ export function Dashboard() {
         <VanTharpModal
           signal={selectedSignal}
           totalEquityUsd={metrics.totalNetWorthUsd}
+          cclRate={rates.ccl || 1200}
           onClose={() => setSelectedSignal(null)}
           onExecute={handleExecuteSizedTrade}
         />

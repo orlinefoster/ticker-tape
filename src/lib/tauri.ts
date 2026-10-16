@@ -32,6 +32,7 @@ export interface BacktestResult {
   win_rate: number;
   num_trades: number;
   equity_curve: number[];
+  equity_dates?: string[];
 }
 
 export interface ServicesStatus {
@@ -92,6 +93,20 @@ export interface SymbolCacheSummary {
 export interface ResyncResult {
   synced: string[];
   failed: [string, string][];
+}
+
+export interface VaultStatus {
+  is_initialized: boolean;
+  is_unlocked: boolean;
+  username: string | null;
+}
+
+export interface CompactPortfolioSummary {
+  is_unlocked: boolean;
+  username: string | null;
+  timestamp: string;
+  has_portfolio: boolean;
+  summary_note: string;
 }
 
 // Supabase Configuration Management
@@ -508,16 +523,29 @@ export const invoke = async <T = any>(cmd: string, args?: Record<string, unknown
     case 'run_strategy':
       return [] as unknown as T;
 
-    case 'run_backtest':
+    case 'run_backtest': {
+      const initialCapital = Number(args?.initialCapital || args?.initial_capital) || 100000;
+      const points = 30;
+      const curve: number[] = [initialCapital];
+      const dates: string[] = ['2024-01-01'];
+      let currentVal = initialCapital;
+      for (let i = 1; i < points; i++) {
+        const ret = (Math.sin(i / 5) * 0.02) + 0.003;
+        currentVal *= (1 + ret);
+        curve.push(Math.round(currentVal * 100) / 100);
+        dates.push(`2024-01-${String(i).padStart(2, '0')}`);
+      }
       return {
-        total_return: 0,
-        annualized_return: 0,
-        sharpe: 0,
-        max_drawdown: 0,
-        win_rate: 0,
-        num_trades: 0,
-        equity_curve: [],
+        total_return: (currentVal - initialCapital) / initialCapital,
+        annualized_return: 0.18,
+        sharpe: 1.45,
+        max_drawdown: 0.082,
+        win_rate: 0.58,
+        num_trades: 12,
+        equity_curve: curve,
+        equity_dates: dates,
       } as unknown as T;
+    }
 
     case 'run_analysis':
       return {} as unknown as T;
@@ -678,9 +706,100 @@ export const invoke = async <T = any>(cmd: string, args?: Record<string, unknown
       } as unknown as T;
     }
 
+    case 'vault_get_status': {
+      return {
+        is_initialized: mockVaultState.initialized,
+        is_unlocked: mockVaultState.unlocked,
+        username: mockVaultState.username,
+      } as unknown as T;
+    }
+
+    case 'vault_setup': {
+      const username = (args?.username as string) || 'Usuario';
+      const pin = (args?.pin as string) || '1234';
+      mockVaultState.initialized = true;
+      mockVaultState.unlocked = true;
+      mockVaultState.username = username;
+      mockVaultState.pin = pin;
+      return undefined as unknown as T;
+    }
+
+    case 'vault_unlock': {
+      const pin = args?.pin as string;
+      if (!mockVaultState.initialized) {
+        throw new Error('Vault has not been initialized');
+      }
+      if (mockVaultState.pin !== pin) {
+        throw new Error('Invalid PIN / password');
+      }
+      mockVaultState.unlocked = true;
+      return mockVaultState.username as unknown as T;
+    }
+
+    case 'vault_lock': {
+      mockVaultState.unlocked = false;
+      return undefined as unknown as T;
+    }
+
+    case 'vault_save_data': {
+      if (!mockVaultState.unlocked) throw new Error('Vault is locked');
+      const key = args?.key as string;
+      const payload = args?.payload as string;
+      mockVaultState.entries[key] = payload;
+      return undefined as unknown as T;
+    }
+
+    case 'vault_load_data': {
+      if (!mockVaultState.unlocked) throw new Error('Vault is locked');
+      const key = args?.key as string;
+      return (mockVaultState.entries[key] || null) as unknown as T;
+    }
+
+    case 'vault_delete_data': {
+      if (!mockVaultState.unlocked) throw new Error('Vault is locked');
+      const key = args?.key as string;
+      const existed = key in mockVaultState.entries;
+      delete mockVaultState.entries[key];
+      return existed as unknown as T;
+    }
+
+    case 'vault_change_pin': {
+      if (!mockVaultState.initialized) throw new Error('Vault not initialized');
+      const oldPin = args?.old_pin || args?.oldPin;
+      const newPin = args?.new_pin || args?.newPin;
+      if (mockVaultState.pin !== oldPin) throw new Error('Current PIN is incorrect');
+      mockVaultState.pin = newPin as string;
+      return undefined as unknown as T;
+    }
+
+    case 'get_compact_portfolio_summary': {
+      let hasPortfolio = Boolean(mockVaultState.entries['ticker-tape-portfolio-v1'] || mockVaultState.entries['portfolio_state']);
+      if (!hasPortfolio && typeof localStorage !== 'undefined') {
+        hasPortfolio = Boolean(localStorage.getItem('ticker-tape-portfolio-v1') || localStorage.getItem('portfolio_state'));
+      }
+      return {
+        is_unlocked: mockVaultState.unlocked,
+        username: mockVaultState.username,
+        timestamp: new Date().toISOString(),
+        has_portfolio: hasPortfolio,
+        summary_note: mockVaultState.unlocked
+          ? 'Vault unlocked. Portfolio access ready.'
+          : 'Vault locked. Authenticate first.',
+      } as unknown as T;
+    }
+
     default:
       return null as unknown as T;
   }
+};
+
+// In-memory mock vault state for browser/test mode
+const mockVaultState = {
+  initialized: false,
+  unlocked: false,
+  username: null as string | null,
+  pin: '1234',
+  entries: {} as Record<string, string>,
 };
 
 // Typed command wrappers
@@ -693,8 +812,8 @@ export const commands = {
   runStrategy: (symbol: string, strategy: string, params?: Record<string, unknown>): Promise<Signal[]> =>
     invoke('run_strategy', { symbol, strategy, params: params ?? {} }),
 
-  runBacktest: (symbol: string, strategy: string, params?: Record<string, unknown>): Promise<BacktestResult> =>
-    invoke('run_backtest', { symbol, strategy, params: params ?? {} }),
+  runBacktest: (symbol: string, strategy: string, params?: Record<string, unknown>, initialCapital?: number): Promise<BacktestResult> =>
+    invoke('run_backtest', { symbol, strategy, params: params ?? {}, initialCapital }),
 
   runAnalysis: <T = unknown>(module: string, symbols: string[], parameters?: Record<string, unknown>): Promise<T> =>
     invoke<T>('run_analysis', { module, symbols, parameters: parameters ?? {} }),
@@ -742,4 +861,32 @@ export const commands = {
 
   resyncMarketData: (symbols: string[], range: string = '1y'): Promise<ResyncResult> =>
     invoke('resync_market_data', { symbols, range }),
+
+  // Vault commands
+  vaultGetStatus: (): Promise<VaultStatus> =>
+    invoke('vault_get_status'),
+
+  vaultSetup: (username: string, pin: string): Promise<void> =>
+    invoke('vault_setup', { username, pin }),
+
+  vaultUnlock: (pin: string): Promise<string> =>
+    invoke('vault_unlock', { pin }),
+
+  vaultLock: (): Promise<void> =>
+    invoke('vault_lock'),
+
+  vaultSaveData: (key: string, payload: string): Promise<void> =>
+    invoke('vault_save_data', { key, payload }),
+
+  vaultLoadData: (key: string): Promise<string | null> =>
+    invoke('vault_load_data', { key }),
+
+  vaultDeleteData: (key: string): Promise<boolean> =>
+    invoke('vault_delete_data', { key }),
+
+  vaultChangePin: (oldPin: string, newPin: string): Promise<void> =>
+    invoke('vault_change_pin', { oldPin, newPin, old_pin: oldPin, new_pin: newPin }),
+
+  getCompactPortfolioSummary: (): Promise<CompactPortfolioSummary> =>
+    invoke('get_compact_portfolio_summary'),
 };

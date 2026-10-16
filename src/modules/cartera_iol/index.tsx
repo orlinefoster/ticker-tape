@@ -199,12 +199,11 @@ export default function CarteraIOLModule() {
   // Portfolio Max Drawdown Limit
   const [maxAllowedDdPct] = useState<number>(12);
 
-  const isReal = override === 'Real';
-  // In Real mode, simulated sandbox holdings are isolated and reset to zero unless real connected assets exist
-  const effectivePositions = isReal ? [] : positions;
-  const effectiveCashArs = isReal ? 0 : cashArs;
-  const effectiveCashUsdMep = isReal ? 0 : cashUsdMep;
-  const effectiveTrades = isReal ? [] : trades;
+  // Effective positions use positions (which persist user edits or live holdings), never reset to empty in Real mode
+  const effectivePositions = positions;
+  const effectiveCashArs = cashArs;
+  const effectiveCashUsdMep = cashUsdMep;
+  const effectiveTrades = trades;
 
   const totalInvestedArs = effectivePositions.reduce((sum, p) => sum + p.marketValueArs, 0);
   const totalCarteraArs = totalInvestedArs + effectiveCashArs + (effectiveCashUsdMep * mepExchangeRate);
@@ -234,7 +233,9 @@ export default function CarteraIOLModule() {
             const bars = await commands.fetchMarketData(pos.symbol, '1m');
             if (bars && bars.length > 0) {
               const latestClose = bars[bars.length - 1].close;
-              const ratioMultiplier = pos.assetType === 'CEDEAR' ? (mepExchangeRate / 20) : 1;
+              const parsedRatio = pos.cedearRatio ? parseFloat(pos.cedearRatio.split(':')[0]) : 20;
+              const safeRatio = Number.isFinite(parsedRatio) && parsedRatio > 0 ? parsedRatio : 20;
+              const ratioMultiplier = pos.assetType === 'CEDEAR' ? (mepExchangeRate / safeRatio) : 1;
               const approxArsPrice = latestClose * ratioMultiplier;
               const marketValArs = pos.nominalQuantity * approxArsPrice;
               const costArs = pos.nominalQuantity * pos.avgBuyPriceArs;

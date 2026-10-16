@@ -10,6 +10,7 @@ export interface MarketSignal {
   suggestedStop: number;
   suggestedTarget: number;
   targetPortfolio: 'iol' | 'binance';
+  currency?: 'USD' | 'ARS';
 }
 
 export interface WorkspaceShortcut {

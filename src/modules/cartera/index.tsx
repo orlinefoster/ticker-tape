@@ -180,11 +180,10 @@ export default function CarteraModule() {
   // Maximum Drawdown Budget
   const [maxAllowedDdPct] = useState<number>(15);
 
-  const isReal = override === 'Real';
-  // In Real mode, simulated sandbox holdings are isolated and reset to zero unless real connected assets exist
-  const effectivePositions = isReal ? [] : positions;
-  const effectiveUsdtCash = isReal ? 0 : usdtCash;
-  const effectiveTrades = isReal ? [] : trades;
+  // Real and Auto use positions (preserving user additions or imported assets), never wiped to empty
+  const effectivePositions = positions;
+  const effectiveUsdtCash = usdtCash;
+  const effectiveTrades = trades;
 
   const totalCryptoValue = effectivePositions.reduce((sum, p) => sum + p.marketValue, 0);
   const totalCarteraValue = totalCryptoValue + effectiveUsdtCash;

@@ -40,7 +40,9 @@ pub async fn query_ollama(
     prompt: &str,
     options: Option<OllamaOptions>,
 ) -> Result<OllamaResponse> {
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()?;
     let request = OllamaRequest {
         model: model.to_string(),
         prompt: prompt.to_string(),

@@ -19,10 +19,12 @@ CREATE TABLE IF NOT EXISTS public.market_candles (
 
 CREATE INDEX IF NOT EXISTS idx_market_candles_symbol_date ON public.market_candles (symbol, date DESC);
 
--- Enable Row Level Security (RLS) and allow public read/write with anon key
+-- Enable Row Level Security (RLS)
+-- Recommendation: Restrict write access to authenticated users in production.
 ALTER TABLE public.market_candles ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow anon read market_candles" ON public.market_candles FOR SELECT USING (true);
-CREATE POLICY "Allow anon insert/update market_candles" ON public.market_candles FOR ALL USING (true);
+CREATE POLICY "Allow authenticated read market_candles" ON public.market_candles FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Allow authenticated insert/update market_candles" ON public.market_candles FOR ALL TO authenticated USING (true);
+CREATE POLICY "Allow anon read market_candles" ON public.market_candles FOR SELECT TO anon USING (true);
 
 -- 2. Daily Portfolio Snapshots (Tracks net worth evolution across devices)
 CREATE TABLE IF NOT EXISTS public.portfolio_snapshots (
@@ -43,8 +45,8 @@ CREATE TABLE IF NOT EXISTS public.portfolio_snapshots (
 CREATE INDEX IF NOT EXISTS idx_portfolio_snapshots_timestamp ON public.portfolio_snapshots (timestamp DESC);
 
 ALTER TABLE public.portfolio_snapshots ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow anon read portfolio_snapshots" ON public.portfolio_snapshots FOR SELECT USING (true);
-CREATE POLICY "Allow anon insert portfolio_snapshots" ON public.portfolio_snapshots FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow authenticated read portfolio_snapshots" ON public.portfolio_snapshots FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Allow authenticated insert portfolio_snapshots" ON public.portfolio_snapshots FOR INSERT TO authenticated WITH CHECK (true);
 
 -- 3. Master Portfolios (Cash, IOL, Binance)
 CREATE TABLE IF NOT EXISTS public.portfolios (
@@ -57,7 +59,7 @@ CREATE TABLE IF NOT EXISTS public.portfolios (
 );
 
 ALTER TABLE public.portfolios ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow anon all portfolios" ON public.portfolios FOR ALL USING (true);
+CREATE POLICY "Allow authenticated all portfolios" ON public.portfolios FOR ALL TO authenticated USING (true);
 
 -- 4. Holdings / Positions
 CREATE TABLE IF NOT EXISTS public.positions (
@@ -76,7 +78,7 @@ CREATE TABLE IF NOT EXISTS public.positions (
 CREATE INDEX IF NOT EXISTS idx_positions_portfolio ON public.positions (portfolio_id);
 
 ALTER TABLE public.positions ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow anon all positions" ON public.positions FOR ALL USING (true);
+CREATE POLICY "Allow authenticated all positions" ON public.positions FOR ALL TO authenticated USING (true);
 
 -- 5. Auditable Transactions Ledger
 CREATE TABLE IF NOT EXISTS public.transactions (
@@ -96,4 +98,4 @@ CREATE TABLE IF NOT EXISTS public.transactions (
 CREATE INDEX IF NOT EXISTS idx_transactions_portfolio_time ON public.transactions (portfolio_id, timestamp DESC);
 
 ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow anon all transactions" ON public.transactions FOR ALL USING (true);
+CREATE POLICY "Allow authenticated all transactions" ON public.transactions FOR ALL TO authenticated USING (true);

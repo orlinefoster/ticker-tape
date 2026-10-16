@@ -63,7 +63,7 @@ export default function BacktestingModule() {
         console.warn('Market data fetch warning:', fetchErr);
       }
 
-      const backtestRes = await commands.runBacktest(symbol, strategy, params);
+      const backtestRes = await commands.runBacktest(symbol, strategy, params, initialCapital);
       setResult(backtestRes);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -73,13 +73,17 @@ export default function BacktestingModule() {
     }
   };
 
-  // Build Equity Curve for FinancialChart
+  // Build Equity Curve for FinancialChart using actual trading bar dates when available
   const equityCurveData: LineData<Time>[] = result && result.equity_curve && result.equity_curve.length > 0
     ? result.equity_curve.map((val, idx) => {
-        // Generate pseudo date sequence or index date
-        const baseDate = new Date();
-        baseDate.setDate(baseDate.getDate() - (result.equity_curve.length - idx));
-        const dateStr = baseDate.toISOString().split('T')[0];
+        let dateStr: string;
+        if (result.equity_dates && result.equity_dates[idx]) {
+          dateStr = result.equity_dates[idx];
+        } else {
+          const baseDate = new Date();
+          baseDate.setDate(baseDate.getDate() - (result.equity_curve.length - idx));
+          dateStr = baseDate.toISOString().split('T')[0];
+        }
         return {
           time: dateStr as Time,
           value: val,

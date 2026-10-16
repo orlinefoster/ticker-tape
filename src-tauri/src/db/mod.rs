@@ -12,9 +12,11 @@ use tokio::sync::OnceCell;
 
 pub mod market_data_repo;
 pub mod strategy_repo;
+pub mod secure_vault;
 
 pub use market_data_repo::MarketDataRepository;
 pub use strategy_repo::StrategyRepository;
+pub use secure_vault::{SecureVault, VaultStatus};
 
 /// Global database connection pool — initialized once at app startup.
 static DB_POOL: OnceCell<Pool<Sqlite>> = OnceCell::const_new();

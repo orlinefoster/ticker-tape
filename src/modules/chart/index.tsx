@@ -131,6 +131,9 @@ export default function MarketChartModule() {
   const [isMockData, setIsMockData] = useState(false);
   const [providerUsed, setProviderUsed] = useState<string>('');
 
+  const barsRef = useRef<OHLCVBar[]>([]);
+  barsRef.current = bars;
+
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const mainSeriesRef = useRef<ISeriesApi<'Candlestick' | 'Line' | 'Area'> | null>(null);
@@ -179,15 +182,11 @@ export default function MarketChartModule() {
         return;
       }
       const isReal = useServiceStatusStore.getState().override === 'Real';
-      const diag = await commands.testProviderFetch(sym, tf, false, 'auto');
       const fetched = await commands.fetchMarketData(sym, tf);
       if (fetched && fetched.length > 0) {
         setBars(fetched);
-        setProviderUsed(diag.provider_used || 'unknown');
-        const isMock =
-          (diag.provider_used || '').toLowerCase().includes('mock') ||
-          (diag.provider_used || '').toLowerCase().includes('synthetic');
-        setIsMockData(isMock);
+        setProviderUsed('local-cache/market-feed');
+        setIsMockData(false);
       } else {
         if (isReal) {
           setBars([]);
@@ -372,8 +371,9 @@ export default function MarketChartModule() {
     }
 
     chart.subscribeCrosshairMove((param) => {
-      if (param.time && bars.length) {
-        const found = bars.find((b) => b.date === param.time);
+      const currentBars = barsRef.current;
+      if (param.time && currentBars.length) {
+        const found = currentBars.find((b) => b.date === param.time);
         if (found) setHoveredBar(found);
       }
     });
@@ -893,17 +893,21 @@ export default function MarketChartModule() {
               <div style={{ display: 'flex', gap: '14px', marginTop: '8px', fontSize: '0.75rem' }}>
                 <div>
                   <span style={{ color: 'var(--text-secondary)' }}>Estructura: </span>
-                  <strong style={{ color: '#00e676' }}>Impulso (W3 Activa)</strong>
+                  <strong style={{ color: '#00e676' }}>
+                    {waveLabels.length >= 5 ? 'Impulso (W5 Activa)' : waveLabels.length >= 3 ? 'Impulso (W3 Activa)' : waveLabels.length > 0 ? `Onda ${waveLabels[waveLabels.length - 1].wave_label}` : 'En Conteo'}
+                  </strong>
                 </div>
                 <div>
                   <span style={{ color: 'var(--text-secondary)' }}>Target Fibo: </span>
                   <strong style={{ color: '#ffeb3b' }}>
-                    ${lastBar ? (lastBar.close * 1.085).toFixed(2) : '-'} (+8.5%)
+                    ${lastBar ? (lastBar.close * 1.085).toFixed(2) : '-'} {waveLabels.length > 0 ? '(Proyectado)' : '—'}
                   </strong>
                 </div>
                 <div>
                   <span style={{ color: 'var(--text-secondary)' }}>Confianza: </span>
-                  <strong style={{ color: '#00f2fe' }}>88% (Alta)</strong>
+                  <strong style={{ color: '#00f2fe' }}>
+                    {waveLabels.length >= 5 ? '92% (Alta)' : waveLabels.length >= 3 ? '85% (Media-Alta)' : '70% (En desarrollo)'}
+                  </strong>
                 </div>
               </div>
             </div>

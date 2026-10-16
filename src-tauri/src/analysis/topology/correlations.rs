@@ -158,8 +158,14 @@ pub fn correlation_to_market(price_data: &[(String, Vec<f64>)]) -> Vec<(String, 
     }
 
     let market_avg: Vec<f64> = (0..min_len)
-        .map(|i| {
-            let day_sum: f64 = log_returns.iter().map(|r| r[i]).sum();
+        .map(|t| {
+            let day_sum: f64 = log_returns
+                .iter()
+                .map(|r| {
+                    let offset = r.len() - min_len;
+                    r[offset + t]
+                })
+                .sum();
             day_sum / log_returns.len() as f64
         })
         .collect();

@@ -18,6 +18,7 @@ const navGroups: NavGroup[] = [
     items: [
       { route: '/', label: 'Torre de Control', icon: '📊' },
       { route: '/portfolio', label: 'Patrimonio Global', icon: '💼' },
+      { route: '/spy-dca', label: 'Plan SPY + Sectores (DCA)', icon: '🏛️' },
       { route: '/cartera', label: 'Cartera Binance', icon: '⚡' },
       { route: '/cartera-iol', label: 'Cartera IOL BYMA', icon: '🇦🇷' },
     ],

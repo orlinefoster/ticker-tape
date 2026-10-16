@@ -11,6 +11,7 @@ const MarketChartModule = lazy(() => import('@/modules/chart'));
 const CarteraModule = lazy(() => import('@/modules/cartera'));
 const CarteraIolModule = lazy(() => import('@/modules/cartera_iol'));
 const PortfolioModule = lazy(() => import('@/modules/portfolio'));
+const SpyDcaModule = lazy(() => import('@/modules/spy_dca'));
 const ProvidersModule = lazy(() => import('@/modules/providers'));
 const IntermarketModule = lazy(() => import('@/modules/intermarket'));
 const TopologyModule = lazy(() => import('@/modules/topology'));
@@ -32,6 +33,7 @@ const modules: Record<string, ModuleEntry> = {
   '/cartera': { name: 'Cartera Binance Spot', component: <CarteraModule /> },
   '/cartera-iol': { name: 'Cartera Argentina IOL', component: <CarteraIolModule /> },
   '/portfolio': { name: 'Carteras & Patrimonio', component: <PortfolioModule /> },
+  '/spy-dca': { name: 'Plan SPY + Sectores (DCA)', component: <SpyDcaModule /> },
   '/providers': { name: 'Diagnóstico de Proveedores', component: <ProvidersModule /> },
   '/intermarket': { name: 'Intermarket', component: <IntermarketModule /> },
   '/topology': { name: 'Market Topology', component: <TopologyModule /> },

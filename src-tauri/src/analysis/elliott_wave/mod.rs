@@ -75,21 +75,48 @@ impl AnalysisModule for ElliottWaveModule {
         let mut all_clusters: Vec<FibCluster> = Vec::new();
 
         for &symbol in &symbols {
-            // 1. Check if labels already exist → skip recount
-            let has_existing = WaveLabelRepository::has_labels(&ctx.db, symbol, Self::TIMEFRAME)
+            let clean_symbol = symbol.trim().to_uppercase();
+            // 1. Check if labels already exist
+            let stored_labels = if WaveLabelRepository::has_labels(&ctx.db, &clean_symbol, Self::TIMEFRAME)
                 .await
-                .unwrap_or(false);
+                .unwrap_or(false)
+            {
+                WaveLabelRepository::load_labels(&ctx.db, &clean_symbol, Self::TIMEFRAME)
+                    .await
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            };
 
-            if !has_existing {
-                // 2. Fetch price data
-                match MarketDataRepository::get_bars(&ctx.db, symbol, &from, &to).await {
+            if stored_labels.len() >= 2 {
+                tracing::debug!(
+                    "[ElliottWave] Loaded {} stored wave labels for {}",
+                    stored_labels.len(),
+                    clean_symbol
+                );
+                total_waves += stored_labels.len();
+                let max_conf = stored_labels
+                    .iter()
+                    .map(|l| l.confidence)
+                    .fold(0.7_f64, f64::max);
+                best_confidence = best_confidence.max(max_conf);
+
+                let last_price = stored_labels
+                    .last()
+                    .and_then(|l| l.price_end.or(l.price_start))
+                    .unwrap_or(0.0);
+                let clusters = counting::find_fib_clusters(&stored_labels, last_price);
+                all_clusters.extend(clusters);
+            } else {
+                // 2. Fetch price data and auto-count
+                match MarketDataRepository::get_bars(&ctx.db, &clean_symbol, &from, &to).await {
                     Ok(bars) if !bars.is_empty() => {
                         let dates: Vec<_> = bars.iter().map(|b| b.date).collect();
                         let closes: Vec<_> = bars.iter().map(|b| b.close).collect();
 
                         // 3. Count waves
                         let (impulse, corrective, clusters) =
-                            counting::count_waves(symbol, &dates, &closes, Self::TIMEFRAME);
+                            counting::count_waves(&clean_symbol, &dates, &closes, Self::TIMEFRAME);
 
                         // 4. Persist labels
                         if !impulse.is_empty() || !corrective.is_empty() {
@@ -99,7 +126,7 @@ impl AnalysisModule for ElliottWaveModule {
                                 .cloned()
                                 .collect();
                             if let Err(e) = WaveLabelRepository::save_labels(&ctx.db, &all_labels).await {
-                                tracing::warn!("Failed to persist wave labels for {}: {}", symbol, e);
+                                tracing::warn!("Failed to persist wave labels for {}: {}", clean_symbol, e);
                             }
                         }
 
@@ -110,14 +137,12 @@ impl AnalysisModule for ElliottWaveModule {
                         all_clusters.extend(clusters);
                     }
                     Ok(_) => {
-                        tracing::warn!("[ElliottWave] No price data for {}", symbol);
+                        tracing::warn!("[ElliottWave] No price data for {}", clean_symbol);
                     }
                     Err(e) => {
-                        tracing::warn!("[ElliottWave] Error fetching {}: {}", symbol, e);
+                        tracing::warn!("[ElliottWave] Error fetching {}: {}", clean_symbol, e);
                     }
                 }
-            } else {
-                tracing::debug!("[ElliottWave] Wave labels already exist for {} — skipping recount", symbol);
             }
         }
 

@@ -20,6 +20,41 @@ use serde::Deserialize;
 
 use crate::trading::models::OHLCVBar;
 
+/// Error type for symbol validation and data provider requests.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DataProviderError {
+    InvalidSymbol(String),
+}
+
+impl std::fmt::Display for DataProviderError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DataProviderError::InvalidSymbol(s) => {
+                write!(f, "Data provider request rejected invalid symbol '{}'", s)
+            }
+        }
+    }
+}
+
+impl std::error::Error for DataProviderError {}
+
+/// Validate and normalize a ticker symbol (uppercase, trimmed, 1..=24 chars, safe charset).
+pub fn validate_symbol(symbol: &str) -> Result<String, DataProviderError> {
+    let clean = symbol.trim().to_uppercase();
+    if clean.is_empty() || clean.len() > 24 || clean.contains("..") {
+        return Err(DataProviderError::InvalidSymbol(symbol.to_string()));
+    }
+    let valid_chars = clean.chars().all(|c| {
+        c.is_ascii_uppercase()
+            || c.is_ascii_digit()
+            || matches!(c, '.' | '-' | '^' | '=' | '_')
+    });
+    if !valid_chars {
+        return Err(DataProviderError::InvalidSymbol(symbol.to_string()));
+    }
+    Ok(clean)
+}
+
 // ---------------------------------------------------------------------------
 // Trait
 // ---------------------------------------------------------------------------
@@ -103,18 +138,20 @@ struct Quote {
 }
 
 impl YahooFinanceProvider {
-    /// Create a new provider with a default HTTP client.
+    /// Create a new provider with a 15-second timeout HTTP client.
     pub fn new() -> Self {
         Self {
             client: Client::builder()
                 .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                .timeout(std::time::Duration::from_secs(15))
                 .build()
                 .expect("reqwest Client should build"),
         }
     }
 
-    /// Build the URL for the Yahoo Finance chart API.
-    fn build_url(&self, symbol: &str, from: NaiveDate, to: NaiveDate) -> String {
+    /// Build the URL for the Yahoo Finance chart API after validating the symbol.
+    pub fn build_url(&self, symbol: &str, from: NaiveDate, to: NaiveDate) -> Result<String, DataProviderError> {
+        let clean_symbol = validate_symbol(symbol)?;
         let period1 = from.and_hms_opt(0, 0, 0)
             .map(|dt| dt.and_utc().timestamp())
             .unwrap_or(0);
@@ -122,10 +159,10 @@ impl YahooFinanceProvider {
             .map(|dt| dt.and_utc().timestamp())
             .unwrap_or(0);
 
-        format!(
+        Ok(format!(
             "{}/{}?period1={}&period2={}&interval=1d",
-            YAHOO_BASE, symbol, period1, period2
-        )
+            YAHOO_BASE, clean_symbol, period1, period2
+        ))
     }
 }
 
@@ -147,30 +184,31 @@ impl DataProvider for YahooFinanceProvider {
         from: NaiveDate,
         to: NaiveDate,
     ) -> anyhow::Result<Vec<OHLCVBar>> {
-        let url = self.build_url(symbol, from, to);
+        let clean_symbol = validate_symbol(symbol)?;
+        let url = self.build_url(&clean_symbol, from, to)?;
 
         let resp: YahooResponse = self
             .client
             .get(&url)
             .send()
             .await
-            .map_err(|e| anyhow::anyhow!("Yahoo Finance request failed for {}: {}", symbol, e))?
+            .map_err(|e| anyhow::anyhow!("Yahoo Finance request failed for {}: {}", clean_symbol, e))?
             .json()
             .await
-            .map_err(|e| anyhow::anyhow!("Yahoo Finance parse failed for {}: {}", symbol, e))?;
+            .map_err(|e| anyhow::anyhow!("Yahoo Finance parse failed for {}: {}", clean_symbol, e))?;
 
         let result = resp
             .chart
             .result
             .and_then(|r| r.into_iter().next())
-            .ok_or_else(|| anyhow::anyhow!("Yahoo Finance returned no data for {}", symbol))?;
+            .ok_or_else(|| anyhow::anyhow!("Yahoo Finance returned no data for {}", clean_symbol))?;
 
         let quote = result
             .indicators
             .quote
             .into_iter()
             .next()
-            .ok_or_else(|| anyhow::anyhow!("Yahoo Finance missing quote data for {}", symbol))?;
+            .ok_or_else(|| anyhow::anyhow!("Yahoo Finance missing quote data for {}", clean_symbol))?;
 
         let bars: Vec<OHLCVBar> = result
             .timestamp
@@ -192,7 +230,7 @@ impl DataProvider for YahooFinanceProvider {
                     .date_naive();
 
                 Some(OHLCVBar {
-                    symbol: symbol.to_string(),
+                    symbol: clean_symbol.clone(),
                     date,
                     open,
                     high,
@@ -204,7 +242,7 @@ impl DataProvider for YahooFinanceProvider {
             .collect();
 
         if bars.is_empty() {
-            anyhow::bail!("Yahoo Finance returned empty data for {}", symbol);
+            anyhow::bail!("Yahoo Finance returned empty data for {}", clean_symbol);
         }
 
         Ok(bars)
@@ -250,9 +288,10 @@ impl BinanceProvider {
         }
     }
 
-    /// Build the URL for Binance Klines API.
-    pub fn build_url(&self, symbol: &str, from: NaiveDate, to: NaiveDate) -> String {
-        let binance_symbol = Self::normalise_symbol(symbol);
+    /// Build the URL for Binance Klines API after validating the symbol.
+    pub fn build_url(&self, symbol: &str, from: NaiveDate, to: NaiveDate) -> Result<String, DataProviderError> {
+        let valid = validate_symbol(symbol)?;
+        let binance_symbol = Self::normalise_symbol(&valid);
         let start_time = from
             .and_hms_opt(0, 0, 0)
             .map(|dt| dt.and_utc().timestamp_millis())
@@ -262,10 +301,10 @@ impl BinanceProvider {
             .map(|dt| dt.and_utc().timestamp_millis())
             .unwrap_or(0);
 
-        format!(
+        Ok(format!(
             "{}?symbol={}&interval=1d&startTime={}&endTime={}&limit=1000",
             BINANCE_BASE, binance_symbol, start_time, end_time
-        )
+        ))
     }
 }
 
@@ -287,14 +326,15 @@ impl DataProvider for BinanceProvider {
         from: NaiveDate,
         to: NaiveDate,
     ) -> anyhow::Result<Vec<OHLCVBar>> {
-        let url = self.build_url(symbol, from, to);
+        let clean_symbol = validate_symbol(symbol)?;
+        let url = self.build_url(&clean_symbol, from, to)?;
 
         let resp = self
             .client
             .get(&url)
             .send()
             .await
-            .map_err(|e| anyhow::anyhow!("Binance request failed for {}: {}", symbol, e))?;
+            .map_err(|e| anyhow::anyhow!("Binance request failed for {}: {}", clean_symbol, e))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -305,7 +345,7 @@ impl DataProvider for BinanceProvider {
         let raw_klines: Vec<Vec<serde_json::Value>> = resp
             .json()
             .await
-            .map_err(|e| anyhow::anyhow!("Binance parse failed for {}: {}", symbol, e))?;
+            .map_err(|e| anyhow::anyhow!("Binance parse failed for {}: {}", clean_symbol, e))?;
 
         let mut bars = Vec::with_capacity(raw_klines.len());
 
@@ -337,7 +377,7 @@ impl DataProvider for BinanceProvider {
             let volume = parse_f64(&k[5]).unwrap_or(0.0);
 
             bars.push(OHLCVBar {
-                symbol: symbol.to_string(),
+                symbol: clean_symbol.clone(),
                 date,
                 open,
                 high,
@@ -348,7 +388,7 @@ impl DataProvider for BinanceProvider {
         }
 
         if bars.is_empty() {
-            anyhow::bail!("Binance returned empty data for {}", symbol);
+            anyhow::bail!("Binance returned empty data for {}", clean_symbol);
         }
 
         Ok(bars)
@@ -410,16 +450,34 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_validate_symbol() {
+        assert_eq!(validate_symbol("  spy ").unwrap(), "SPY");
+        assert_eq!(validate_symbol("BRK.B").unwrap(), "BRK.B");
+        assert_eq!(validate_symbol("BTC-USD").unwrap(), "BTC-USD");
+        assert_eq!(validate_symbol("^GSPC").unwrap(), "^GSPC");
+        assert_eq!(validate_symbol("GC=F").unwrap(), "GC=F");
+
+        assert!(validate_symbol("").is_err());
+        assert!(validate_symbol("   ").is_err());
+        assert!(validate_symbol("SPY/../../etc/passwd").is_err());
+        assert!(validate_symbol("AAPL?interval=1m&foo=bar").is_err());
+        assert!(validate_symbol("A..B").is_err());
+        assert!(validate_symbol(&"A".repeat(25)).is_err());
+    }
+
+    #[test]
     fn test_yahoo_build_url() {
         let provider = YahooFinanceProvider::new();
         let from = NaiveDate::from_ymd_opt(2025, 1, 1).unwrap();
         let to = NaiveDate::from_ymd_opt(2025, 1, 5).unwrap();
 
-        let url = provider.build_url("SPY", from, to);
+        let url = provider.build_url("spy", from, to).unwrap();
         assert!(url.contains("query2.finance.yahoo.com/v8/finance/chart/SPY"));
         assert!(url.contains("period1="));
         assert!(url.contains("period2="));
         assert!(url.contains("interval=1d"));
+
+        assert!(provider.build_url("SPY/../../admin", from, to).is_err());
     }
 
     #[test]
@@ -428,11 +486,13 @@ mod tests {
         let from = NaiveDate::from_ymd_opt(2025, 1, 1).unwrap();
         let to = NaiveDate::from_ymd_opt(2025, 1, 5).unwrap();
 
-        let url = provider.build_url("BTC", from, to);
+        let url = provider.build_url("btc", from, to).unwrap();
         assert!(url.contains("api.binance.com/api/v3/klines"));
         assert!(url.contains("symbol=BTCUSDT"));
         assert!(url.contains("interval=1d"));
         assert!(url.contains("startTime="));
+
+        assert!(provider.build_url("BTC&limit=1", from, to).is_err());
     }
 
     #[test]

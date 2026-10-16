@@ -12,6 +12,7 @@ use chrono::{NaiveDate, Utc};
 use tauri::Manager;
 
 use crate::db::market_data_repo::{MarketDataRepository, SymbolCacheSummary};
+use crate::db::{SecureVault, VaultStatus};
 use crate::trading::backtest::{BacktestResult, Backtester};
 use crate::trading::bar_collection::BarCollection;
 use crate::trading::market_data;
@@ -19,7 +20,7 @@ use crate::trading::models::{OHLCVBar, Signal};
 use crate::analysis::elliott_wave::persistence::WaveLabelRepository;
 use crate::analysis::elliott_wave::types::WaveLabel;
 use crate::analysis::{available_modules, ModuleContext};
-use crate::trading::strategies::{BollingerBands, MACrossover, RSI, Strategy};
+use crate::trading::strategies::{BollingerBands, ElliottWave, MACrossover, RSI, Strategy};
 
 // ---------------------------------------------------------------------------
 // Tauri Commands
@@ -33,11 +34,12 @@ fn greet(name: &str) -> String {
 
 /// Fetch market data (OHLCV bars) for a symbol over a given range.
 ///
-/// First checks the local SQLite cache; on miss fetches from the
-/// appropriate external data provider (Yahoo Finance, Binance, etc.)
+/// First checks the local SQLite cache; on miss (or partial range coverage)
+/// fetches from the appropriate external data provider (Yahoo Finance, Binance, etc.)
 /// and caches the result in SQLite.
 #[tauri::command]
 async fn fetch_market_data(symbol: String, range: String) -> Result<Vec<OHLCVBar>, String> {
+    let symbol = symbol.trim().to_uppercase();
     let pool = db::get_db().map_err(|e| e.to_string())?;
 
     let to = Utc::now().date_naive();
@@ -52,28 +54,55 @@ async fn fetch_market_data(symbol: String, range: String) -> Result<Vec<OHLCVBar
         .map_err(|e| e.to_string())?;
 
     if !cached.is_empty() {
-        tracing::debug!("Cache hit for {} in range {} ({} bars)", symbol, range, cached.len());
-        return Ok(cached);
+        let earliest_date = cached.first().map(|b| b.date).unwrap_or(to);
+        let covers_range = range == "1m" || (earliest_date - from).num_days() <= 14;
+        if covers_range {
+            tracing::debug!(
+                "Cache hit for {} in range {} ({} bars)",
+                symbol,
+                range,
+                cached.len()
+            );
+            return Ok(cached);
+        }
+        tracing::info!(
+            "Partial cache for {} in range {} (earliest {} vs requested {}), fetching full range",
+            symbol,
+            range,
+            earliest_date,
+            from
+        );
     }
 
-    // 2. Cache miss — fetch from external provider.
-    tracing::info!("Cache miss for {} in range {} — fetching from provider", symbol, range);
-    let bars = market_data::fetch_historical_data(&symbol, from, to)
-        .await
-        .map_err(|e| format!("Failed to fetch {}: {}", symbol, e))?;
-
-    // 3. Store fetched bars in cache (background).
-    if let Err(e) = MarketDataRepository::upsert_bars(pool, &bars).await {
-        tracing::warn!("Failed to cache bars for {}: {}", symbol, e);
+    // 2. Cache miss or partial coverage — fetch from external provider.
+    tracing::info!("Fetching {} in range {} from provider", symbol, range);
+    match market_data::fetch_historical_data(&symbol, from, to).await {
+        Ok(bars) => {
+            if let Err(e) = MarketDataRepository::upsert_bars(pool, &bars).await {
+                tracing::warn!("Failed to cache bars for {}: {}", symbol, e);
+            }
+            tracing::info!("Fetched {} bars for {} from provider", bars.len(), symbol);
+            Ok(bars)
+        }
+        Err(e) => {
+            if !cached.is_empty() {
+                tracing::warn!(
+                    "Remote fetch failed for {} ({}), falling back to {} cached bars",
+                    symbol,
+                    e,
+                    cached.len()
+                );
+                Ok(cached)
+            } else {
+                Err(format!("Failed to fetch {}: {}", symbol, e))
+            }
+        }
     }
-
-    tracing::info!("Fetched {} bars for {} from provider", bars.len(), symbol);
-    Ok(bars)
 }
 
 /// Run a trading strategy on historical data and return generated signals.
 ///
-/// Supported strategies: `ma-crossover`, `bollinger-bands`, `rsi`.
+/// Supported strategies: `ma-crossover`, `bollinger-bands`, `rsi`, `elliott-wave`.
 /// Params are flexible JSON, overriding defaults for each strategy.
 #[tauri::command]
 async fn run_strategy(
@@ -81,6 +110,7 @@ async fn run_strategy(
     strategy: String,
     params: serde_json::Value,
 ) -> Result<Vec<Signal>, String> {
+    let symbol = symbol.trim().to_uppercase();
     let strategy_obj = build_strategy(&strategy, &params)?;
 
     let pool = db::get_db().map_err(|e| e.to_string())?;
@@ -99,7 +129,9 @@ async fn run_backtest(
     symbol: String,
     strategy: String,
     params: serde_json::Value,
+    initial_capital: Option<f64>,
 ) -> Result<BacktestResult, String> {
+    let symbol = symbol.trim().to_uppercase();
     let strategy_obj = build_strategy(&strategy, &params)?;
 
     let pool = db::get_db().map_err(|e| e.to_string())?;
@@ -109,8 +141,13 @@ async fn run_backtest(
     let collection =
         BarCollection::new(bars).map_err(|e| format!("Invalid bar data: {}", e))?;
 
-    let backtester = Backtester::new(100_000.0);
-    let result = backtester.run(&*strategy_obj, &collection).await;
+    let cap = initial_capital
+        .or_else(|| params.get("initial_capital").and_then(|v| v.as_f64()))
+        .filter(|&c| c > 0.0 && c.is_finite())
+        .unwrap_or(100_000.0);
+
+    let backtester = Backtester::new(cap);
+    let result = backtester.run_with_capital(&*strategy_obj, &collection, cap).await;
     Ok(result)
 }
 
@@ -124,10 +161,15 @@ async fn run_analysis(
     parameters: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
     let pool = db::get_db().map_err(|e| e.to_string())?;
+    let normalized_symbols: Vec<String> = symbols
+        .into_iter()
+        .map(|s| s.trim().to_uppercase())
+        .filter(|s| !s.is_empty())
+        .collect();
 
     let ctx = ModuleContext {
         db: pool.clone(),
-        symbols,
+        symbols: normalized_symbols,
         parameters,
     };
 
@@ -147,6 +189,7 @@ async fn run_analysis(
 /// The UI calls this on mount to avoid re-running the algorithm.
 #[tauri::command]
 async fn load_wave_labels(symbol: String) -> Result<Vec<WaveLabel>, String> {
+    let symbol = symbol.trim().to_uppercase();
     let pool = db::get_db().map_err(|e| e.to_string())?;
     WaveLabelRepository::load_labels(pool, &symbol, "1d")
         .await
@@ -168,6 +211,7 @@ async fn save_wave_labels(labels: Vec<WaveLabel>) -> Result<u64, String> {
 /// Trigger a fresh wave count (deletes existing labels first).
 #[tauri::command]
 async fn recount_waves(symbol: String) -> Result<Vec<WaveLabel>, String> {
+    let symbol = symbol.trim().to_uppercase();
     let pool = db::get_db().map_err(|e| e.to_string())?;
 
     // 1. Delete old labels
@@ -216,6 +260,7 @@ async fn analyze_market_ai(
     symbol: String,
     model: Option<String>,
 ) -> Result<String, String> {
+    let symbol = symbol.trim().to_uppercase();
     let pool = db::get_db().map_err(|e| e.to_string())?;
     let to = Utc::now().date_naive();
     let from = to - chrono::Duration::days(90);
@@ -296,12 +341,17 @@ fn build_strategy(name: &str, params: &serde_json::Value) -> Result<Box<dyn Stra
         "ma-crossover" => {
             let fast = params
                 .get("fast")
+                .or_else(|| params.get("short_period"))
                 .and_then(|v| v.as_i64())
-                .unwrap_or(50) as usize;
-            let slow = params
+                .unwrap_or(50)
+                .max(1) as usize;
+            let slow_raw = params
                 .get("slow")
+                .or_else(|| params.get("long_period"))
                 .and_then(|v| v.as_i64())
-                .unwrap_or(200) as usize;
+                .unwrap_or(200)
+                .max(2) as usize;
+            let slow = slow_raw.max(fast + 1);
             Ok(Box::new(MACrossover {
                 fast_period: fast,
                 slow_period: slow,
@@ -311,30 +361,43 @@ fn build_strategy(name: &str, params: &serde_json::Value) -> Result<Box<dyn Stra
             let period = params
                 .get("period")
                 .and_then(|v| v.as_i64())
-                .unwrap_or(20) as usize;
+                .unwrap_or(20)
+                .max(1) as usize;
             let stddev = params
                 .get("stddev")
                 .and_then(|v| v.as_f64())
-                .unwrap_or(2.0);
+                .unwrap_or(2.0)
+                .max(0.1);
             Ok(Box::new(BollingerBands::new(period, stddev)))
         }
         "rsi" => {
             let period = params
                 .get("period")
                 .and_then(|v| v.as_i64())
-                .unwrap_or(14) as usize;
+                .unwrap_or(14)
+                .max(1) as usize;
             let overbought = params
                 .get("overbought")
                 .and_then(|v| v.as_f64())
-                .unwrap_or(70.0);
+                .unwrap_or(70.0)
+                .clamp(51.0, 99.0);
             let oversold = params
                 .get("oversold")
                 .and_then(|v| v.as_f64())
-                .unwrap_or(30.0);
+                .unwrap_or(30.0)
+                .clamp(1.0, 49.0);
             Ok(Box::new(RSI::new(period, overbought, oversold)))
         }
+        "elliott-wave" => {
+            let min_wave_length = params
+                .get("min_wave_length")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(5)
+                .max(2) as usize;
+            Ok(Box::new(ElliottWave::new(min_wave_length)))
+        }
         _ => Err(format!(
-            "Unknown strategy '{}'. Supported: ma-crossover, bollinger-bands, rsi",
+            "Unknown strategy '{}'. Supported: ma-crossover, bollinger-bands, rsi, elliott-wave",
             name
         )),
     }
@@ -659,6 +722,7 @@ async fn ping_provider_test(provider: String) -> Result<PingResult, String> {
 /// Delete cached bars for a symbol from SQLite.
 #[tauri::command]
 async fn clear_symbol_cache(symbol: String) -> Result<u64, String> {
+    let symbol = symbol.trim().to_uppercase();
     let pool = db::get_db().map_err(|e| e.to_string())?;
     MarketDataRepository::delete_symbol(pool, &symbol)
         .await
@@ -705,7 +769,11 @@ async fn purge_market_data(symbols: Vec<String>) -> Result<u64, String> {
     } else {
         let mut total = 0u64;
         for s in symbols {
-            let count = MarketDataRepository::delete_symbol(pool, &s)
+            let clean = s.trim().to_uppercase();
+            if clean.is_empty() {
+                continue;
+            }
+            let count = MarketDataRepository::delete_symbol(pool, &clean)
                 .await
                 .map_err(|e| e.to_string())?;
             total += count;
@@ -760,6 +828,138 @@ async fn resync_market_data(symbols: Vec<String>, range: Option<String>) -> Resu
     Ok(ResyncResult { synced, failed })
 }
 
+/// Compact summary of portfolio and vault for agents.
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct CompactPortfolioSummary {
+    pub is_unlocked: bool,
+    pub username: Option<String>,
+    pub timestamp: String,
+    pub has_portfolio: bool,
+    pub summary_note: String,
+}
+
+/// Get the current status of the encrypted user vault.
+#[tauri::command]
+async fn vault_get_status() -> Result<VaultStatus, String> {
+    let pool = db::get_db().map_err(|e| e.to_string())?;
+    SecureVault::get_status(pool).await.map_err(|e| e.to_string())
+}
+
+/// Set up a new user vault with master PIN/passphrase.
+#[tauri::command]
+async fn vault_setup(username: String, pin: String) -> Result<(), String> {
+    let pool = db::get_db().map_err(|e| e.to_string())?;
+    SecureVault::setup(pool, &username, &pin).await.map_err(|e| e.to_string())
+}
+
+/// Unlock user vault with PIN/passphrase.
+#[tauri::command]
+async fn vault_unlock(pin: String) -> Result<String, String> {
+    let pool = db::get_db().map_err(|e| e.to_string())?;
+    SecureVault::unlock(pool, &pin).await.map_err(|e| e.to_string())
+}
+
+/// Lock the user vault.
+#[tauri::command]
+async fn vault_lock() -> Result<(), String> {
+    SecureVault::lock().await;
+    Ok(())
+}
+
+/// Save an encrypted JSON string payload under key.
+#[tauri::command]
+async fn vault_save_data(key: String, payload: String) -> Result<(), String> {
+    let pool = db::get_db().map_err(|e| e.to_string())?;
+    SecureVault::save_data(pool, &key, &payload).await.map_err(|e| e.to_string())
+}
+
+/// Load and decrypt a JSON payload by key.
+#[tauri::command]
+async fn vault_load_data(key: String) -> Result<Option<String>, String> {
+    let pool = db::get_db().map_err(|e| e.to_string())?;
+    SecureVault::load_data(pool, &key).await.map_err(|e| e.to_string())
+}
+
+/// Delete a payload by key.
+#[tauri::command]
+async fn vault_delete_data(key: String) -> Result<bool, String> {
+    let pool = db::get_db().map_err(|e| e.to_string())?;
+    SecureVault::delete_data(pool, &key).await.map_err(|e| e.to_string())
+}
+
+/// Change user PIN and re-encrypt all stored vault payloads.
+#[tauri::command]
+async fn vault_change_pin(old_pin: String, new_pin: String) -> Result<(), String> {
+    let pool = db::get_db().map_err(|e| e.to_string())?;
+    SecureVault::change_pin(pool, &old_pin, &new_pin).await.map_err(|e| e.to_string())
+}
+
+/// Get a compact summary of portfolio and vault for agents.
+#[tauri::command]
+async fn get_compact_portfolio_summary() -> Result<CompactPortfolioSummary, String> {
+    let pool = db::get_db().map_err(|e| e.to_string())?;
+    let status = SecureVault::get_status(pool).await.map_err(|e| e.to_string())?;
+
+    let mut has_portfolio = false;
+    let mut summary_note = if status.is_unlocked {
+        "Vault unlocked. Portfolio access ready.".to_string()
+    } else {
+        "Vault locked. Authenticate first.".to_string()
+    };
+
+    if status.is_unlocked {
+        let raw_payload = match SecureVault::load_data(pool, "ticker-tape-portfolio-v1")
+            .await
+            .unwrap_or(None)
+        {
+            Some(data) => Some(data),
+            None => SecureVault::load_data(pool, "portfolio_state")
+                .await
+                .unwrap_or(None),
+        };
+
+        if let Some(raw) = raw_payload {
+            has_portfolio = true;
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) {
+                let state = v.get("state").unwrap_or(&v);
+                let binance_count = state
+                    .get("binanceHoldings")
+                    .and_then(|a| a.as_array())
+                    .map(|a| a.len())
+                    .unwrap_or(0);
+                let iol_count = state
+                    .get("iolHoldings")
+                    .and_then(|a| a.as_array())
+                    .map(|a| a.len())
+                    .unwrap_or(0);
+                let cash_count = state
+                    .get("cashHoldings")
+                    .and_then(|a| a.as_array())
+                    .map(|a| a.len())
+                    .unwrap_or(0);
+                let legacy_count = state
+                    .get("holdings")
+                    .and_then(|a| a.as_array())
+                    .map(|a| a.len())
+                    .unwrap_or(0);
+                let total_positions = binance_count + iol_count + cash_count + legacy_count;
+                summary_note = format!(
+                    "Vault unlocked. Portfolio loaded ({} positions: {} Binance, {} IOL, {} Cash).",
+                    total_positions, binance_count, iol_count, cash_count
+                );
+            }
+        }
+    }
+
+    Ok(CompactPortfolioSummary {
+        is_unlocked: status.is_unlocked,
+        username: status.username,
+        timestamp: chrono::Utc::now().to_rfc3339(),
+        has_portfolio,
+        summary_note,
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tracing_subscriber::fmt()
@@ -783,8 +983,21 @@ pub fn run() {
             }
 
             if let Some(window) = app.get_webview_window("main") {
+                tracing::info!("Found main window from config, showing...");
                 let _ = window.show();
                 let _ = window.set_focus();
+            } else {
+                tracing::info!("Main window not found from config, creating programmatically...");
+                let window = tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::default())
+                    .title("Ticker Tape")
+                    .inner_size(1400.0, 900.0)
+                    .min_inner_size(1024.0, 700.0)
+                    .resizable(true)
+                    .visible(true)
+                    .build();
+                if let Err(e) = window {
+                    tracing::error!("Failed to create main window: {}", e);
+                }
             }
 
             Ok(())
@@ -808,6 +1021,15 @@ pub fn run() {
             purge_market_data,
             get_market_data_summary,
             resync_market_data,
+            vault_get_status,
+            vault_setup,
+            vault_unlock,
+            vault_lock,
+            vault_save_data,
+            vault_load_data,
+            vault_delete_data,
+            vault_change_pin,
+            get_compact_portfolio_summary,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

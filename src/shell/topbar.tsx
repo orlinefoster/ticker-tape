@@ -2,13 +2,17 @@ import { useState } from 'react';
 import { useTheme } from '@/theme/useTheme';
 import { useServiceStatusStore, OverrideSetting } from '@/store/serviceStatusStore';
 import { usePortfolioStore } from '@/store/portfolioStore';
+import { useAuthStore } from '@/store/authStore';
 import { DataIntegrityModal } from '@/components/DataIntegrityModal';
+import { SecuritySettingsModal } from '@/components/auth/SecuritySettingsModal';
 
 export function TopBar() {
   const { theme, toggleTheme } = useTheme();
   const { status, override, setOverride } = useServiceStatusStore();
   const rates = usePortfolioStore((state) => state.rates);
+  const { username } = useAuthStore();
   const [isIntegrityOpen, setIsIntegrityOpen] = useState(false);
+  const [isSecurityOpen, setIsSecurityOpen] = useState(false);
 
   const renderBadge = (name: string, value: 'connected' | 'mock' | 'disconnected', tooltipPrefix: string) => {
     const config = {
@@ -243,6 +247,30 @@ export function TopBar() {
           <span>Datos</span>
         </button>
 
+        {/* Security & Vault */}
+        <button
+          onClick={() => setIsSecurityOpen(true)}
+          title={`Bóveda de Seguridad (${username || 'Usuario'}). Clic para configurar o cambiar PIN.`}
+          aria-label="Seguridad y Bóveda Cifrada"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '5px',
+            background: 'rgba(16, 185, 129, 0.08)',
+            border: '1px solid rgba(16, 185, 129, 0.25)',
+            borderRadius: 'var(--radius-sm)',
+            padding: '3px 8px',
+            cursor: 'pointer',
+            fontSize: '0.72rem',
+            fontWeight: 600,
+            fontFamily: 'monospace',
+            color: 'var(--signal-bullish)',
+          }}
+        >
+          <span>🔒</span>
+          <span>Bóveda</span>
+        </button>
+
         {/* Theme Toggle */}
         <button
           onClick={toggleTheme}
@@ -266,6 +294,11 @@ export function TopBar() {
       <DataIntegrityModal
         isOpen={isIntegrityOpen}
         onClose={() => setIsIntegrityOpen(false)}
+      />
+
+      <SecuritySettingsModal
+        isOpen={isSecurityOpen}
+        onClose={() => setIsSecurityOpen(false)}
       />
     </header>
   );

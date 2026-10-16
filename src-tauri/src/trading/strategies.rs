@@ -53,7 +53,7 @@ pub trait Strategy: Send + Sync {
 }
 
 // ---------------------------------------------------------------------------
-// Moving Average Crossover (placeholder)
+// Moving Average Crossover
 // ---------------------------------------------------------------------------
 
 /// Moving Average Crossover strategy
@@ -62,25 +62,104 @@ pub struct MACrossover {
     pub slow_period: usize,
 }
 
+impl MACrossover {
+    pub fn new(fast_period: usize, slow_period: usize) -> Self {
+        Self {
+            fast_period,
+            slow_period,
+        }
+    }
+}
+
 #[async_trait::async_trait]
 impl Strategy for MACrossover {
     fn name(&self) -> &str {
         "MA Crossover"
     }
 
-    async fn evaluate(&self, _symbol: &str, _bars: &[OHLCVBar]) -> Vec<Signal> {
-        // TODO: Implement MA crossover logic
-        Vec::new()
+    async fn evaluate(&self, symbol: &str, bars: &[OHLCVBar]) -> Vec<Signal> {
+        if self.fast_period == 0
+            || self.slow_period == 0
+            || self.fast_period >= self.slow_period
+            || bars.len() < self.slow_period + 1
+        {
+            return Vec::new();
+        }
+
+        let closes: Vec<f64> = bars.iter().map(|b| b.close).collect();
+        let mut signals = Vec::new();
+
+        for i in self.slow_period..bars.len() {
+            let prev_fast: f64 =
+                closes[i - self.fast_period..i].iter().sum::<f64>() / self.fast_period as f64;
+            let curr_fast: f64 =
+                closes[i + 1 - self.fast_period..=i].iter().sum::<f64>() / self.fast_period as f64;
+
+            let prev_slow: f64 =
+                closes[i - self.slow_period..i].iter().sum::<f64>() / self.slow_period as f64;
+            let curr_slow: f64 =
+                closes[i + 1 - self.slow_period..=i].iter().sum::<f64>() / self.slow_period as f64;
+
+            let bar = &bars[i];
+            let ts = date_to_utc(bar.date);
+            let denom = curr_slow.abs().max(1e-9);
+
+            // Golden cross: fast SMA crosses above slow SMA
+            if prev_fast <= prev_slow && curr_fast > curr_slow {
+                let strength = (((curr_fast - curr_slow).abs() / denom) * 20.0).clamp(0.5, 1.0);
+                signals.push(Signal {
+                    symbol: symbol.to_string(),
+                    direction: SignalDirection::Buy,
+                    strength,
+                    timestamp: ts,
+                    source: self.name().to_string(),
+                    metadata: serde_json::json!({
+                        "close": bar.close,
+                        "fast_sma": curr_fast,
+                        "slow_sma": curr_slow,
+                        "fast_period": self.fast_period,
+                        "slow_period": self.slow_period,
+                    }),
+                });
+            }
+
+            // Death cross: fast SMA crosses below slow SMA
+            if prev_fast >= prev_slow && curr_fast < curr_slow {
+                let strength = (((curr_slow - curr_fast).abs() / denom) * 20.0).clamp(0.5, 1.0);
+                signals.push(Signal {
+                    symbol: symbol.to_string(),
+                    direction: SignalDirection::Sell,
+                    strength,
+                    timestamp: ts,
+                    source: self.name().to_string(),
+                    metadata: serde_json::json!({
+                        "close": bar.close,
+                        "fast_sma": curr_fast,
+                        "slow_sma": curr_slow,
+                        "fast_period": self.fast_period,
+                        "slow_period": self.slow_period,
+                    }),
+                });
+            }
+        }
+
+        signals
     }
 }
 
 // ---------------------------------------------------------------------------
-// Elliott Wave (placeholder)
+// Elliott Wave
 // ---------------------------------------------------------------------------
 
 /// Elliott Wave pattern detector
 pub struct ElliottWave {
     pub min_wave_length: usize,
+}
+
+impl ElliottWave {
+    pub fn new(min_wave_length: usize) -> Self {
+        Self { min_wave_length }
+    }
 }
 
 #[async_trait::async_trait]
@@ -89,9 +168,73 @@ impl Strategy for ElliottWave {
         "Elliott Wave"
     }
 
-    async fn evaluate(&self, _symbol: &str, _bars: &[OHLCVBar]) -> Vec<Signal> {
-        // TODO: Implement Elliott Wave detection (ported from orlines-lab)
-        Vec::new()
+    async fn evaluate(&self, symbol: &str, bars: &[OHLCVBar]) -> Vec<Signal> {
+        if self.min_wave_length == 0 || bars.len() < 10 || bars.len() < self.min_wave_length * 2 {
+            return Vec::new();
+        }
+
+        let lookback = self.min_wave_length.max(2);
+        let min_wave_pct = 0.015; // 1.5% minimum swing amplitude
+        let closes: Vec<f64> = bars.iter().map(|b| b.close).collect();
+        let mut signals = Vec::new();
+        let mut last_pivot_price = closes[0];
+
+        for i in lookback..closes.len() {
+            let window = &closes[i - lookback..i];
+            let prev_min = window.iter().copied().fold(f64::INFINITY, f64::min);
+            let prev_max = window.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+            let curr = closes[i];
+            let prev = closes[i - 1];
+
+            let bar = &bars[i];
+            let ts = date_to_utc(bar.date);
+
+            // Impulse turn up from swing low exceeding min_wave_pct
+            if prev <= prev_min
+                && curr > prev
+                && last_pivot_price > 0.0
+                && ((last_pivot_price - prev) / last_pivot_price) >= min_wave_pct
+            {
+                let swing_pct = ((last_pivot_price - prev) / last_pivot_price).abs();
+                let strength = (swing_pct * 10.0).clamp(0.5, 1.0);
+                last_pivot_price = curr;
+                signals.push(Signal {
+                    symbol: symbol.to_string(),
+                    direction: SignalDirection::Buy,
+                    strength,
+                    timestamp: ts,
+                    source: self.name().to_string(),
+                    metadata: serde_json::json!({
+                        "close": bar.close,
+                        "swing_low": prev,
+                        "swing_pct": swing_pct * 100.0,
+                    }),
+                });
+            } else if prev >= prev_max
+                && curr < prev
+                && last_pivot_price > 0.0
+                && ((prev - last_pivot_price) / last_pivot_price) >= min_wave_pct
+            {
+                // Corrective turn down from swing high exceeding min_wave_pct
+                let swing_pct = ((prev - last_pivot_price) / last_pivot_price).abs();
+                let strength = (swing_pct * 10.0).clamp(0.5, 1.0);
+                last_pivot_price = curr;
+                signals.push(Signal {
+                    symbol: symbol.to_string(),
+                    direction: SignalDirection::Sell,
+                    strength,
+                    timestamp: ts,
+                    source: self.name().to_string(),
+                    metadata: serde_json::json!({
+                        "close": bar.close,
+                        "swing_high": prev,
+                        "swing_pct": swing_pct * 100.0,
+                    }),
+                });
+            }
+        }
+
+        signals
     }
 }
 
@@ -141,7 +284,7 @@ impl Strategy for BollingerBands {
     }
 
     async fn evaluate(&self, symbol: &str, bars: &[OHLCVBar]) -> Vec<Signal> {
-        if bars.len() < self.period {
+        if self.period == 0 || bars.len() < self.period {
             return Vec::new();
         }
 
@@ -166,7 +309,8 @@ impl Strategy for BollingerBands {
             // Buy when price touches or crosses below lower band.
             if bar.close <= lower {
                 // Strength proportional to how far below the band (capped at 1.0).
-                let strength = ((lower - bar.close) / lower).clamp(0.1, 1.0);
+                let denom = lower.abs().max(1e-9);
+                let strength = ((lower - bar.close) / denom).clamp(0.1, 1.0);
                 signals.push(Signal {
                     symbol: symbol.to_string(),
                     direction: SignalDirection::Buy,
@@ -184,7 +328,8 @@ impl Strategy for BollingerBands {
 
             // Sell when price touches or crosses above upper band.
             if bar.close >= upper {
-                let strength = ((bar.close - upper) / upper).clamp(0.1, 1.0);
+                let denom = upper.abs().max(1e-9);
+                let strength = ((bar.close - upper) / denom).clamp(0.1, 1.0);
                 signals.push(Signal {
                     symbol: symbol.to_string(),
                     direction: SignalDirection::Sell,
@@ -233,7 +378,7 @@ impl RSI {
     /// Returns a vector of length `bars.len()` where the first `period`
     /// entries are `None` (insufficient data for a stable RSI).
     fn compute_series(&self, closes: &[f64]) -> Vec<Option<f64>> {
-        if closes.len() < self.period + 1 {
+        if self.period == 0 || closes.len() < self.period + 1 {
             return vec![None; closes.len()];
         }
 
@@ -316,7 +461,7 @@ impl Strategy for RSI {
     }
 
     async fn evaluate(&self, symbol: &str, bars: &[OHLCVBar]) -> Vec<Signal> {
-        if bars.len() < self.period + 1 {
+        if self.period == 0 || bars.len() < self.period + 1 {
             return Vec::new();
         }
 
@@ -335,7 +480,8 @@ impl Strategy for RSI {
 
             // Buy: crosses from below oversold to above oversold.
             if prev_rsi <= self.oversold && curr_rsi > self.oversold {
-                let strength = ((curr_rsi - self.oversold) / (50.0 - self.oversold)).clamp(0.1, 1.0);
+                let denom = (50.0 - self.oversold).abs().max(1.0);
+                let strength = ((curr_rsi - self.oversold) / denom).clamp(0.1, 1.0);
                 signals.push(Signal {
                     symbol: symbol.to_string(),
                     direction: SignalDirection::Buy,
@@ -352,7 +498,8 @@ impl Strategy for RSI {
 
             // Sell: crosses from above overbought to below overbought.
             if prev_rsi >= self.overbought && curr_rsi < self.overbought {
-                let strength = ((self.overbought - curr_rsi) / (self.overbought - 50.0)).clamp(0.1, 1.0);
+                let denom = (self.overbought - 50.0).abs().max(1.0);
+                let strength = ((self.overbought - curr_rsi) / denom).clamp(0.1, 1.0);
                 signals.push(Signal {
                     symbol: symbol.to_string(),
                     direction: SignalDirection::Sell,
@@ -444,6 +591,10 @@ mod tests {
         let bb = BollingerBands::new(20, 2.0);
         let signals = bb.evaluate("TEST", &bars).await;
         assert!(signals.is_empty());
+
+        // Zero period guard
+        let bb_zero = BollingerBands::new(0, 2.0);
+        assert!(bb_zero.evaluate("TEST", &bars).await.is_empty());
     }
 
     #[tokio::test]
@@ -516,6 +667,10 @@ mod tests {
         let rsi = RSI::new(14, 70.0, 30.0);
         let signals = rsi.evaluate("TEST", &bars).await;
         assert!(signals.is_empty());
+
+        // Zero period guard
+        let rsi_zero = RSI::new(0, 50.0, 50.0);
+        assert!(rsi_zero.evaluate("TEST", &bars).await.is_empty());
     }
 
     #[tokio::test]
@@ -544,7 +699,7 @@ mod tests {
         assert!(signals.is_empty(), "Flat price should not generate signals");
     }
 
-    // -- Strategy trait tests --------------------------------------------------
+    // -- MA Crossover & ElliottWave tests --------------------------------------
 
     #[tokio::test]
     async fn test_macrossover_default_parameters() {
@@ -554,5 +709,64 @@ mod tests {
         };
         // Default impl returns empty.
         assert!(ma.parameters().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_macrossover_generates_buy_and_sell_signals() {
+        let start = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
+        let mut bars = Vec::new();
+        // Flat/downtrend then strong uptrend (golden cross), then sharp drop (death cross)
+        for i in 0..10 {
+            bars.push(make_bar(start + chrono::Duration::days(i), 100.0 - i as f64));
+        }
+        for i in 10..20 {
+            bars.push(make_bar(
+                start + chrono::Duration::days(i),
+                90.0 + (i - 10) as f64 * 4.0,
+            ));
+        }
+        for i in 20..30 {
+            bars.push(make_bar(
+                start + chrono::Duration::days(i),
+                130.0 - (i - 20) as f64 * 6.0,
+            ));
+        }
+
+        let ma = MACrossover::new(3, 8);
+        let signals = ma.evaluate("TEST", &bars).await;
+        assert!(
+            signals.iter().any(|s| s.direction == SignalDirection::Buy),
+            "Expected golden cross Buy signal"
+        );
+        assert!(
+            signals.iter().any(|s| s.direction == SignalDirection::Sell),
+            "Expected death cross Sell signal"
+        );
+
+        // Zero period guard
+        let ma_zero = MACrossover::new(0, 8);
+        assert!(ma_zero.evaluate("TEST", &bars).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_elliott_wave_strategy_signals() {
+        let start = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
+        let mut bars = Vec::new();
+        // Drop from 100 to 90, then turn up, then rise to 110 and turn down
+        let prices = [
+            100.0, 98.0, 96.0, 94.0, 92.0, 90.0, 93.0, 97.0, 102.0, 106.0, 110.0, 107.0, 103.0,
+        ];
+        for (i, &p) in prices.iter().enumerate() {
+            bars.push(make_bar(start + chrono::Duration::days(i as i64), p));
+        }
+
+        let ew = ElliottWave::new(3);
+        let signals = ew.evaluate("TEST", &bars).await;
+        assert!(!signals.is_empty(), "Expected ElliottWave swing turn signals");
+        assert!(signals.iter().any(|s| s.direction == SignalDirection::Buy));
+        assert!(signals.iter().any(|s| s.direction == SignalDirection::Sell));
+
+        let ew_zero = ElliottWave::new(0);
+        assert!(ew_zero.evaluate("TEST", &bars).await.is_empty());
     }
 }

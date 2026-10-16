@@ -28,6 +28,8 @@ pub struct BacktestResult {
     pub num_trades: usize,
     /// Portfolio equity after each bar (mark-to-market).
     pub equity_curve: Vec<f64>,
+    /// ISO date string corresponding to each entry in `equity_curve`.
+    pub equity_dates: Vec<String>,
 }
 
 /// A single completed trade (entry → exit).
@@ -59,6 +61,24 @@ impl Backtester {
             initial_capital,
             risk_per_trade: 0.02,
         }
+    }
+
+    /// Run a backtest with a custom initial capital override.
+    pub async fn run_with_capital(
+        &self,
+        strategy: &dyn Strategy,
+        bars: &BarCollection,
+        initial_capital: f64,
+    ) -> BacktestResult {
+        let bt = Self {
+            initial_capital: if initial_capital > 0.0 {
+                initial_capital
+            } else {
+                100_000.0
+            },
+            risk_per_trade: self.risk_per_trade,
+        };
+        bt.run(strategy, bars).await
     }
 
     /// Run a backtest.
@@ -100,11 +120,13 @@ impl Backtester {
         let mut entry_date: Option<NaiveDate> = None;
 
         let mut trades: Vec<TradeRecord> = Vec::new();
-        let mut equity_curve: Vec<f64> = Vec::with_capacity(bars.len());
+        let mut equity_curve: Vec<f64> = Vec::with_capacity(bars.len() + 1);
+        let mut equity_dates: Vec<String> = Vec::with_capacity(bars.len() + 1);
 
         for bar in bars.iter() {
             let equity = cash + position * bar.close;
             equity_curve.push(equity);
+            equity_dates.push(bar.date.to_string());
 
             if let Some(&(buy_strength, sell_strength)) = signal_map.get(&bar.date) {
                 if buy_strength > sell_strength && position < f64::EPSILON {
@@ -167,6 +189,7 @@ impl Backtester {
         // Final equity after liquidation
         let final_equity = cash;
         equity_curve.push(final_equity);
+        equity_dates.push(bars.last().map(|b| b.date.to_string()).unwrap_or_default());
 
         // --- Compute metrics --------------------------------------------------
         let total_return = if self.initial_capital > 0.0 {
@@ -207,6 +230,7 @@ impl Backtester {
             win_rate,
             num_trades,
             equity_curve,
+            equity_dates,
         }
     }
 }
